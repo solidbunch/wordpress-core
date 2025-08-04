@@ -1,0 +1,27 @@
+name: Update WordPress Core Package
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # every day at 3:00 UTC
+  workflow_dispatch:     # allows manual triggering of the workflow
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - run: node generate-packages-json.js
+
+      - name: Commit and Push if Changed
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add packages.json
+          git diff --cached --quiet || git commit -m "🔄 Update WordPress core version"
+          git push
