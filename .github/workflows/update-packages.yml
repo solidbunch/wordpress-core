@@ -22,6 +22,7 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
+          WP_VERSION=$(node -p 'Object.keys(require("./packages.json").packages["solidbunch/wordpress-core"])[0]')
           git add packages.json
-          git diff --cached --quiet || git commit -m "🔄 Update WordPress core version"
+          git diff --cached --quiet || git commit -m "🔄 Update WordPress core to $WP_VERSION"
           git push
