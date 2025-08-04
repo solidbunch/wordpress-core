@@ -30,6 +30,7 @@ https.get('https://api.wordpress.org/core/version-check/1.7/', (res) => {
             name: 'solidbunch/wordpress-core-no-content',
             version,
             type: 'wordpress-core',
+            license: 'MIT',
             require: {
               php: `>=${phpMajorMinor}`
             },
@@ -51,6 +52,7 @@ https.get('https://api.wordpress.org/core/version-check/1.7/', (res) => {
             name: 'solidbunch/wordpress-core-full',
             version,
             type: 'wordpress-core',
+            license: 'MIT',
             require: {
               php: `>=${phpMajorMinor}`
             },
