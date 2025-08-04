@@ -49,7 +49,7 @@ https.get('https://api.wordpress.org/core/version-check/1.7/', (res) => {
         // Add full variant if available
         if (pkg.full && typeof pkg.full === 'string') {
           fullPackages[version] = {
-            name: 'solidbunch/wordpress-core-full',
+            name: 'solidbunch/wordpress-core',
             version,
             type: 'wordpress-core',
             license: 'MIT',
@@ -80,7 +80,7 @@ https.get('https://api.wordpress.org/core/version-check/1.7/', (res) => {
             'solidbunch/wordpress-core-no-content': noContentPackages
           }),
           ...(Object.keys(fullPackages).length > 0 && {
-            'solidbunch/wordpress-core-full': fullPackages
+            'solidbunch/wordpress-core': fullPackages
           })
         }
       };
