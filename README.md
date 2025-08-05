@@ -1,6 +1,6 @@
 # SolidBunch WordPress core
 
-Composer-compatible package repository for WordPress core distributions, maintained by [SolidBunch](https://solidbunch.com) for [StarterKit](https://starter-kit.io).\
+Composer-compatible package repository for WordPress core distributions, maintained by SolidBunch for [StarterKit](https://starter-kit.io) project.\
 Provides **two variants** of WordPress core packages:
 
 - `solidbunch/wordpress-core` – full WordPress archive, identical to [wordpress.org](https://wordpress.org/download)
@@ -90,8 +90,15 @@ The `packages.json` is updated automatically using:
 
 ---
 
-## 📝 License
+## StarterKit Integration
 
-MIT — for repository contents and generated metadata.\
-Each WordPress archive remains under [GPLv2+](https://wordpress.org/about/license/).
+### [Website](https://starter-kit.io) | [Documentation](https://starter-kit.io/docs/overview/)
 
+See the [StarterKit installation guide](https://starter-kit.io/docs/installation/).
+
+---
+
+## Stay Connected
+
+- Participate on [GitHub Discussions](https://github.com/solidbunch/starter-kit-foundation/discussions)
+- Connect via [LinkedIn](https://www.linkedin.com/company/solidbunch)
