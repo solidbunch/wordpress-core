@@ -2,8 +2,15 @@ name: Update WordPress Core Package
 
 on:
   schedule:
-    - cron: '0 3 * * *'  # every day at 3:00 UTC
+    - cron: "0 3 * * 1,3,5" # Monday, Wednesday, Friday at 03:00 UTC
   workflow_dispatch:     # allows manual triggering of the workflow
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-wordpress-core
+  cancel-in-progress: false
 
 jobs:
   update:
@@ -12,13 +19,38 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+      - name: Check latest version in WordPress API
+        id: version_check
+        run: |
+          API_VERSION=$(curl -fsSL --max-time 30 https://api.wordpress.org/core/version-check/1.7/ \
+            | node -e "let d=''; process.stdin.on('data', c => d += c); process.stdin.on('end', () => { const v = JSON.parse(d).offers?.[0]?.version || ''; console.log(v); });" \
+          ) || true
+          LOCAL_VERSION=$(node -p 'Object.keys(require("./packages.json").packages["solidbunch/wordpress-core"])[0]')
 
-      - run: node generate-packages-json.js
+          echo "api_version=$API_VERSION" >> "$GITHUB_OUTPUT"
+          echo "local_version=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$API_VERSION" ]; then
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+            echo "API unreachable or empty response — proceeding with full regeneration"
+          elif [ "$API_VERSION" = "$LOCAL_VERSION" ]; then
+            echo "has_update=false" >> "$GITHUB_OUTPUT"
+            echo "No new release. Local=$LOCAL_VERSION API=$API_VERSION"
+          else
+            echo "has_update=true" >> "$GITHUB_OUTPUT"
+            echo "New release detected. Local=$LOCAL_VERSION API=$API_VERSION"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.version_check.outputs.has_update == 'true'
+        with:
+          node-version: "22"
+
+      - if: steps.version_check.outputs.has_update == 'true'
+        run: node generate-packages-json.js
 
       - name: Commit and Push if Changed
+        if: steps.version_check.outputs.has_update == 'true'
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"

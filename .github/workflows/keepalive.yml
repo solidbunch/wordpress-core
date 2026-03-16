@@ -1,0 +1,30 @@
+name: Repository Keepalive
+
+on:
+  schedule:
+    - cron: "0 6 1 * *" # 1st of each month at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create keepalive heartbeat
+        run: |
+          mkdir -p .github/keepalive
+          date -u +"%Y-%m-%dT%H:%M:%SZ" > .github/keepalive/last-activity.txt
+
+      - name: Commit and push heartbeat
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .github/keepalive/last-activity.txt
+          git diff --cached --quiet || git commit -m "chore: keepalive heartbeat"
+          git push
