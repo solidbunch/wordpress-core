@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check latest version in WordPress API
         id: version_check
@@ -41,7 +41,7 @@ jobs:
             echo "New release detected. Local=$LOCAL_VERSION API=$API_VERSION"
           fi
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         if: steps.version_check.outputs.has_update == 'true'
         with:
           node-version: "22"
