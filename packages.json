@@ -1,6 +1,22 @@
 {
   "packages": {
     "solidbunch/wordpress-core-no-content": {
+      "7.0.1": {
+        "name": "solidbunch/wordpress-core-no-content",
+        "version": "7.0.1",
+        "type": "wordpress-core",
+        "license": "MIT",
+        "require": {
+          "php": ">=7.4"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-7.0.1-no-content.zip"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
       "7.0": {
         "name": "solidbunch/wordpress-core-no-content",
         "version": "7.0",
@@ -11,7 +27,7 @@
         },
         "dist": {
           "type": "zip",
-          "url": "https://downloads.wordpress.org/release/wordpress-7.0-no-content.zip"
+          "url": "https://downloads.w.org/release/wordpress-7.0-no-content.zip"
         },
         "extra": {
           "mysql_version": "5.5.5"
@@ -387,6 +403,22 @@
       }
     },
     "solidbunch/wordpress-core": {
+      "7.0.1": {
+        "name": "solidbunch/wordpress-core",
+        "version": "7.0.1",
+        "type": "wordpress-core",
+        "license": "MIT",
+        "require": {
+          "php": ">=7.4"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-7.0.1.zip"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
       "7.0": {
         "name": "solidbunch/wordpress-core",
         "version": "7.0",
@@ -397,7 +429,7 @@
         },
         "dist": {
           "type": "zip",
-          "url": "https://downloads.wordpress.org/release/wordpress-7.0.zip"
+          "url": "https://downloads.w.org/release/wordpress-7.0.zip"
         },
         "extra": {
           "mysql_version": "5.5.5"
