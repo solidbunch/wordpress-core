@@ -1,9 +1,9 @@
 {
   "packages": {
     "solidbunch/wordpress-core-no-content": {
-      "7.0.1": {
+      "7.0.2": {
         "name": "solidbunch/wordpress-core-no-content",
-        "version": "7.0.1",
+        "version": "7.0.2",
         "type": "wordpress-core",
         "license": "MIT",
         "require": {
@@ -11,31 +11,15 @@
         },
         "dist": {
           "type": "zip",
-          "url": "https://downloads.wordpress.org/release/wordpress-7.0.1-no-content.zip"
+          "url": "https://downloads.wordpress.org/release/wordpress-7.0.2-no-content.zip"
         },
         "extra": {
           "mysql_version": "5.5.5"
         }
       },
-      "7.0": {
+      "6.9.5": {
         "name": "solidbunch/wordpress-core-no-content",
-        "version": "7.0",
-        "type": "wordpress-core",
-        "license": "MIT",
-        "require": {
-          "php": ">=7.4"
-        },
-        "dist": {
-          "type": "zip",
-          "url": "https://downloads.w.org/release/wordpress-7.0-no-content.zip"
-        },
-        "extra": {
-          "mysql_version": "5.5.5"
-        }
-      },
-      "6.9.4": {
-        "name": "solidbunch/wordpress-core-no-content",
-        "version": "6.9.4",
+        "version": "6.9.5",
         "type": "wordpress-core",
         "license": "MIT",
         "require": {
@@ -43,15 +27,15 @@
         },
         "dist": {
           "type": "zip",
-          "url": "https://downloads.w.org/release/wordpress-6.9.4-no-content.zip"
+          "url": "https://downloads.w.org/release/wordpress-6.9.5-no-content.zip"
         },
         "extra": {
           "mysql_version": "5.5.5"
         }
       },
-      "6.8.5": {
+      "6.8.6": {
         "name": "solidbunch/wordpress-core-no-content",
-        "version": "6.8.5",
+        "version": "6.8.6",
         "type": "wordpress-core",
         "license": "MIT",
         "require": {
@@ -59,7 +43,7 @@
         },
         "dist": {
           "type": "zip",
-          "url": "https://downloads.w.org/release/wordpress-6.8.5-no-content.zip"
+          "url": "https://downloads.w.org/release/wordpress-6.8.6-no-content.zip"
         },
         "extra": {
           "mysql_version": "5.5.5"
@@ -403,9 +387,9 @@
       }
     },
     "solidbunch/wordpress-core": {
-      "7.0.1": {
+      "7.0.2": {
         "name": "solidbunch/wordpress-core",
-        "version": "7.0.1",
+        "version": "7.0.2",
         "type": "wordpress-core",
         "license": "MIT",
         "require": {
@@ -413,31 +397,15 @@
         },
         "dist": {
           "type": "zip",
-          "url": "https://downloads.wordpress.org/release/wordpress-7.0.1.zip"
+          "url": "https://downloads.wordpress.org/release/wordpress-7.0.2.zip"
         },
         "extra": {
           "mysql_version": "5.5.5"
         }
       },
-      "7.0": {
+      "6.9.5": {
         "name": "solidbunch/wordpress-core",
-        "version": "7.0",
-        "type": "wordpress-core",
-        "license": "MIT",
-        "require": {
-          "php": ">=7.4"
-        },
-        "dist": {
-          "type": "zip",
-          "url": "https://downloads.w.org/release/wordpress-7.0.zip"
-        },
-        "extra": {
-          "mysql_version": "5.5.5"
-        }
-      },
-      "6.9.4": {
-        "name": "solidbunch/wordpress-core",
-        "version": "6.9.4",
+        "version": "6.9.5",
         "type": "wordpress-core",
         "license": "MIT",
         "require": {
@@ -445,15 +413,15 @@
         },
         "dist": {
           "type": "zip",
-          "url": "https://downloads.w.org/release/wordpress-6.9.4.zip"
+          "url": "https://downloads.w.org/release/wordpress-6.9.5.zip"
         },
         "extra": {
           "mysql_version": "5.5.5"
         }
       },
-      "6.8.5": {
+      "6.8.6": {
         "name": "solidbunch/wordpress-core",
-        "version": "6.8.5",
+        "version": "6.8.6",
         "type": "wordpress-core",
         "license": "MIT",
         "require": {
@@ -461,7 +429,7 @@
         },
         "dist": {
           "type": "zip",
-          "url": "https://downloads.w.org/release/wordpress-6.8.5.zip"
+          "url": "https://downloads.w.org/release/wordpress-6.8.6.zip"
         },
         "extra": {
           "mysql_version": "5.5.5"
