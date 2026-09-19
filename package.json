@@ -1,0 +1,11 @@
+{
+  "name": "solidbunch-wordpress-core",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
+}

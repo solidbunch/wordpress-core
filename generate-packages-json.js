@@ -3,115 +3,35 @@
 const fs = require('fs');
 const { execFileSync } = require('child_process');
 
+const {
+  API_URL,
+  STABLE_CHECK_URL,
+  VERSION_PHP_URLS,
+  LICENSE,
+  MIN_VERSION,
+  VERSION_RE,
+  SHASUM_RE,
+  PHP_REQUIREMENT_RE,
+  VARIANTS
+} = require('./lib/constants');
+const { isObject, distUrl, normalizeHost } = require('./lib/util');
+const { compareVersions, findDuplicates } = require('./lib/versions');
+const { httpGet, describeResponse, withRetries } = require('./lib/http');
+const { parsePackages, readPackagesFile } = require('./lib/packages-file');
+
 const PACKAGES_FILE = 'packages.json';
-const API_URL = 'https://api.wordpress.org/core/version-check/1.7/';
-const STABLE_CHECK_URL = 'https://api.wordpress.org/core/stable-check/1.0/';
-const VERSION_PHP_URLS = [
-  (version) => `https://core.svn.wordpress.org/tags/${version}/wp-includes/version.php`,
-  (version) => `https://raw.githubusercontent.com/WordPress/WordPress/${version}/wp-includes/version.php`
-];
-const DOWNLOAD_BASE = 'https://downloads.wordpress.org/release/';
-const DOWNLOAD_HOST = 'downloads.wordpress.org';
 
-// License of the WordPress archives the entries point to, not of this repository's own code
-const LICENSE = 'GPL-2.0-or-later';
-
-// Oldest branch ever published here; limits enumeration only
-const MIN_VERSION = '4.1';
-
-const VERSION_RE = /^\d+\.\d+(\.\d+)?$/;
-const SHASUM_RE = /^[0-9a-f]{40}$/;
-const PHP_REQUIREMENT_RE = /^>=\d+\.\d+$/;
-
-const REQUEST_TIMEOUT_MS = 15000;
-const MAX_IN_FLIGHT = 6;
-const MAX_BACKOFF_MS = 30000;
 const API_RETRIES = 2;
 const NEW_ENTRY_RETRIES = 2;
 const EXISTING_ENTRY_RETRIES = 5;
 
-const VARIANTS = [
-  { name: 'solidbunch/wordpress-core-no-content', suffix: '-no-content' },
-  { name: 'solidbunch/wordpress-core', suffix: '' }
-];
-
-const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const distUrl = (variant, version) => `${DOWNLOAD_BASE}wordpress-${version}${variant.suffix}.zip`;
-
-function versionParts(version) {
-  const parts = version.split('.').map(Number);
-  while (parts.length < 3) parts.push(0);
-  return parts;
-}
-
-function compareVersions(a, b) {
-  const pa = versionParts(a);
-  const pb = versionParts(b);
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  }
-  return 0;
-}
-
-// "4.1" and "4.1.0" are the same Composer version, so equal-comparing keys are duplicates
-function findDuplicates(versions) {
-  const seen = new Map();
-  const duplicates = [];
-  for (const version of versions) {
-    const canonical = versionParts(version).join('.');
-    if (seen.has(canonical)) duplicates.push(`DUPLICATE-VERSION: ${seen.get(canonical)} == ${version}`);
-    else seen.set(canonical, version);
-  }
-  return duplicates;
-}
-
-let inFlight = 0;
-const waiting = [];
-
-async function acquireSlot() {
-  if (inFlight < MAX_IN_FLIGHT) inFlight++;
-  else await new Promise((resolve) => waiting.push(resolve));
-}
-
-function releaseSlot() {
-  const next = waiting.shift();
-  if (next) next();
-  else inFlight--;
-}
-
-async function httpGet(url) {
-  await acquireSlot();
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-    return { status: res.status, body: await res.text() };
-  } catch (err) {
-    return { error: err.cause?.code || err.cause?.message || err.message };
-  } finally {
-    releaseSlot();
-  }
-}
-
-async function withRetries(retries, attempt) {
-  let reason;
-  for (let i = 0; i <= retries; i++) {
-    if (i > 0) await sleep(Math.min(1000 * 2 ** (i - 1), MAX_BACKOFF_MS));
-    const outcome = await attempt();
-    if (!outcome.retry) return outcome;
-    reason = outcome.retry;
-  }
-  return { failure: reason };
-}
-
-const describeResponse = (res) => `HTTP ${res.status}: ${res.body.trim().replace(/\s+/g, ' ').slice(0, 500)}`;
-
 async function fetchJson(url) {
-  const outcome = await withRetries(API_RETRIES, async () => {
+  const outcome = await withRetries(async () => {
     const res = await httpGet(url);
     if (res.error) return { retry: res.error };
     if (res.status !== 200) return { retry: describeResponse(res) };
     return { body: res.body };
-  });
+  }, { retries: API_RETRIES });
   if (outcome.failure) throw new Error(`cannot fetch ${url}: ${outcome.failure}`);
   try {
     return JSON.parse(outcome.body);
@@ -122,7 +42,7 @@ async function fetchJson(url) {
 
 // Only a 404 on the .sha1 means "archive does not exist"; every other failure is transient
 async function fetchShasum(url, retries) {
-  return withRetries(retries, async () => {
+  return withRetries(async () => {
     const res = await httpGet(`${url}.sha1`);
     if (res.error) return { retry: res.error };
     if (res.status === 404) return { missing: true };
@@ -130,31 +50,11 @@ async function fetchShasum(url, retries) {
     const shasum = res.body.trim();
     if (!SHASUM_RE.test(shasum)) return { retry: `HTTP 200 but body is not a SHA-1: ${JSON.stringify(shasum.slice(0, 100))}` };
     return { shasum };
-  });
-}
-
-function parsePackages(text, label) {
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    throw new Error(`${label} is not valid JSON: ${err.message}`);
-  }
-  if (!isObject(parsed) || !isObject(parsed.packages)) throw new Error(`${label} has no "packages" object`);
-  const known = VARIANTS.map((variant) => variant.name);
-  for (const name of Object.keys(parsed.packages)) {
-    if (!known.includes(name)) throw new Error(`${label} contains unknown package ${name}`);
-    if (!isObject(parsed.packages[name])) throw new Error(`${label}: package ${name} is not an object`);
-  }
-  return parsed.packages;
+  }, { retries });
 }
 
 function readPackages({ required }) {
-  if (!fs.existsSync(PACKAGES_FILE)) {
-    if (required) throw new Error(`${PACKAGES_FILE} does not exist`);
-    return {};
-  }
-  return parsePackages(fs.readFileSync(PACKAGES_FILE, 'utf8'), PACKAGES_FILE);
+  return readPackagesFile(PACKAGES_FILE, { required });
 }
 
 function readGitBaseline() {
@@ -249,17 +149,6 @@ function asymmetricLines(packages) {
   return lines;
 }
 
-function normalizeHost(url) {
-  try {
-    const parsed = new URL(url);
-    parsed.protocol = 'https:';
-    parsed.hostname = DOWNLOAD_HOST;
-    return parsed.href;
-  } catch {
-    return undefined;
-  }
-}
-
 function buildEntry(fields, url, shasum) {
   const entry = {
     name: fields.name,
@@ -340,7 +229,7 @@ async function fetchVersionPhpMetadata(version) {
   const outcomes = [];
   for (const buildUrl of VERSION_PHP_URLS) {
     const url = buildUrl(version);
-    const outcome = await withRetries(NEW_ENTRY_RETRIES, async () => {
+    const outcome = await withRetries(async () => {
       const res = await httpGet(url);
       if (res.error) return { retry: res.error };
       if (res.status === 404) return { missing: true };
@@ -348,7 +237,7 @@ async function fetchVersionPhpMetadata(version) {
       const metadata = parseVersionPhp(res.body);
       if (!metadata) return { retry: 'HTTP 200 but the body has no single $required_php_version and $required_mysql_version assignment' };
       return { metadata };
-    });
+    }, { retries: NEW_ENTRY_RETRIES });
     if (outcome.metadata) return { metadata: outcome.metadata };
     outcomes.push({ url, outcome });
   }
