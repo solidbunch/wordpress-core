@@ -106,12 +106,14 @@ This plugin recognizes `type: wordpress-core` and places the archive into the sp
 
 ## ⚙ Automatic generation
 
-The `packages.json` is kept up to date by the Node.js script `generate-packages-json.js` (included in this repository), which is run by GitHub Actions:
+The `packages.json` is kept up to date by the Node.js script `generate-packages-json.js` (included in this repository), which is run by GitHub Actions. The script `check-new-versions.js` decides whether the generator needs to run; it never modifies `packages.json` (it only writes its `run=` output for the workflow).
 
-- `update-packages.yml` runs on Monday, Wednesday and Friday at 03:00 UTC (cron `0 3 * * 1,3,5`) and can be started manually (`workflow_dispatch`)
+- `update-packages.yml` runs a light check about every 10 minutes (cron `3-59/10 * * * *`, deliberately off the hour). The check compares the versions offered by the WordPress `version-check` API with `packages.json` and starts the generator only when a new release whose archive is already published is missing. Once a day (cron `7 4 * * *`) it forces a full generator run, which also picks up versions that only `stable-check` lists. It can also be started manually (`workflow_dispatch`), which always forces a full generator run
 - `keepalive.yml` makes a monthly heartbeat commit (1st of the month, 06:00 UTC)
 
-On every run:
+The aim is to pick up a new release within 10–15 minutes, on a best-effort basis: GitHub documents that scheduled runs can be delayed under high load and that queued jobs may be dropped.
+
+On every generator run:
 
 - the generator merges into the existing `packages.json` and never removes a version
 - it reads the official WordPress APIs `https://api.wordpress.org/core/version-check/1.7/` and `https://api.wordpress.org/core/stable-check/1.0/`, and adds every missing stable release from 4.1 onwards with its checksum

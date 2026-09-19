@@ -2,20 +2,38 @@ name: Update WordPress Core Package
 
 on:
   schedule:
-    - cron: "0 3 * * 1,3,5" # Monday, Wednesday, Friday at 03:00 UTC
-  workflow_dispatch:     # allows manual triggering of the workflow
-
-permissions:
-  contents: write
-
-concurrency:
-  group: wp-core-repo-write
-  cancel-in-progress: false
+    - cron: "3-59/10 * * * *" # light release check, off the hour because scheduled runs are delayed at :00
+    - cron: "7 4 * * *"
+  workflow_dispatch:     # allows manual triggering of the workflow, always a full generator run
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check for a new WordPress release
+        id: gate
+        env:
+          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '7 4 * * *' }}
+        run: node check-new-versions.js
+
   update:
+    needs: check
+    if: needs.check.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
+    concurrency:
+      group: wp-core-repo-write
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v6
