@@ -30,7 +30,7 @@ This repository provides two variants of the WordPress core:
 
 ```json
 "require": {
-  "solidbunch/wordpress-core": "^6.8"
+  "solidbunch/wordpress-core": "^7.1"
 }
 ```
 
@@ -38,9 +38,25 @@ This repository provides two variants of the WordPress core:
 
 ```json
 "require": {
-  "solidbunch/wordpress-core-no-content": "^6.8"
+  "solidbunch/wordpress-core-no-content": "^7.1"
 }
 ```
+
+### Pin an exact version
+
+Any available version can be required exactly:
+
+```json
+"require": {
+  "solidbunch/wordpress-core": "7.0.3"
+}
+```
+
+### Available versions
+
+Every stable WordPress release from the 4.1 branch onwards is kept and is never removed from the repository. The oldest available version is `4.1`; the newest is the latest WordPress release.
+
+Branch releases are named exactly as WordPress names them (e.g. `7.1`, `6.9`, `4.1`). Composer treats these as `7.1.0`, `6.9.0` and `4.1.0`.
 
 ---
 
@@ -53,9 +69,12 @@ This repository provides two variants of the WordPress core:
 
 All packages include:
 
-- Correct PHP version requirement (parsed from official WordPress metadata)
 - `license: MIT`
+- `require.php`: the PHP requirement of each release (`>=X.Y`), taken from the WordPress API or from the release's own `wp-includes/version.php`
 - Optional `extra.mysql_version` field for advanced tooling
+- `dist.shasum`: the SHA-1 of the release archive, taken from the `.sha1` file that wordpress.org publishes next to each archive (e.g. `https://downloads.wordpress.org/release/wordpress-7.1.zip.sha1`). Composer verifies it on download.
+
+> ❗ Limit of the checksums: an entry that already has a valid checksum is never re-fetched. If WordPress ever re-publishes an archive under the same URL with a different checksum, this repository does not notice it.
 
 ---
 
@@ -87,11 +106,22 @@ This plugin recognizes `type: wordpress-core` and places the archive into the sp
 
 ## ⚙ Automatic generation
 
-The `packages.json` is updated automatically using:
+The `packages.json` is kept up to date by the Node.js script `generate-packages-json.js` (included in this repository), which is run by GitHub Actions:
 
-- Official WordPress API: `https://api.wordpress.org/core/version-check/1.7/`
-- Node.js script `generate-packages-json.js` (included in this repository)
-- Optional GitHub Actions trigger (e.g. daily schedule)
+- `update-packages.yml` runs on Monday, Wednesday and Friday at 03:00 UTC (cron `0 3 * * 1,3,5`) and can be started manually (`workflow_dispatch`)
+- `keepalive.yml` makes a monthly heartbeat commit (1st of the month, 06:00 UTC)
+
+On every run:
+
+- the generator merges into the existing `packages.json` and never removes a version
+- it reads the official WordPress APIs `https://api.wordpress.org/core/version-check/1.7/` and `https://api.wordpress.org/core/stable-check/1.0/`, and adds every missing stable release from 4.1 onwards with its checksum
+- it reads the PHP and MySQL requirements from the API or from the release's own `wp-includes/version.php`
+- it validates the result before writing it and refuses to write on any violation
+- the workflow commits only when `packages.json` changed
+- the run fails, with nothing committed, if the WordPress API is unreachable or validation fails
+- a version that could not be fully fetched is deferred: it is reported and picked up by the next run, while the rest is committed and the run then ends red
+
+To check a local `packages.json` offline, run `node generate-packages-json.js --check` from the repository root. It validates the file and, inside a git checkout, reports versions that are missing compared with `HEAD`. It exits with code 1 on any violation and never writes anything. Running the generator without `--check` rewrites `packages.json` and calls the WordPress API.
 
 ---
 
