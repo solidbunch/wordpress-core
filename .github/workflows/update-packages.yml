@@ -1,4 +1,4 @@
-name: Update WordPress Core Package
+name: WordPress release watch
 
 on:
   schedule:
@@ -8,6 +8,7 @@ on:
 
 jobs:
   check:
+    name: Check wordpress.org for new releases
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -29,6 +30,7 @@ jobs:
         run: node check-new-versions.js
 
   update:
+    name: Update packages.json
     needs: check
     if: needs.check.outputs.run == 'true'
     runs-on: ubuntu-24.04
