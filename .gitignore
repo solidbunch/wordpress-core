@@ -1,0 +1,65 @@
+#==================#
+#     OS Files     #
+#==================#
+*.DS_Store
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+*[Tt]humbs.db
+*.Trashes
+
+
+#===================#
+#     IDE Files     #
+#===================#
+.idea
+.vscode
+*.sublime-project
+*.sublime-workspace
+*.komodoproject
+*.codekit3
+
+
+#===================================#
+#      Log, map files, cache        #
+#===================================#
+*.log
+*.log.*
+
+
+#=============================#
+#    Config, secrets, .env    #
+#=============================#
+.env
+.env.*
+!.env.example
+
+
+#===================================#
+#       Vendor and npm Files        #
+#===================================#
+node_modules/
+
+
+#===================================#
+#     Browser automation output     #
+#===================================#
+.playwright-mcp/
+
+
+# ===================================#
+#          Claude Code               #
+# ===================================#
+# Keep shared AI instructions tracked (root CLAUDE.md, .claude/rules/);
+# ignore machine-local runtime artifacts.
+.claude/*
+!.claude/agents/
+!.claude/skills/
+!.claude/rules/
+!.claude/commands/
+!.claude/output-styles/
+!.claude/workflows/
+!.claude/settings.json
