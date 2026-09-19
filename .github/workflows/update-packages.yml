@@ -15,46 +15,38 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v6
 
-      - name: Check latest version in WordPress API
-        id: version_check
-        run: |
-          API_VERSION=$(curl -fsSL --max-time 30 https://api.wordpress.org/core/version-check/1.7/ \
-            | node -e "let d=''; process.stdin.on('data', c => d += c); process.stdin.on('end', () => { const v = JSON.parse(d).offers?.[0]?.version || ''; console.log(v); });" \
-          ) || true
-          LOCAL_VERSION=$(node -p 'Object.keys(require("./packages.json").packages["solidbunch/wordpress-core"])[0]')
-
-          echo "api_version=$API_VERSION" >> "$GITHUB_OUTPUT"
-          echo "local_version=$LOCAL_VERSION" >> "$GITHUB_OUTPUT"
-
-          if [ -z "$API_VERSION" ]; then
-            echo "has_update=true" >> "$GITHUB_OUTPUT"
-            echo "API unreachable or empty response — proceeding with full regeneration"
-          elif [ "$API_VERSION" = "$LOCAL_VERSION" ]; then
-            echo "has_update=false" >> "$GITHUB_OUTPUT"
-            echo "No new release. Local=$LOCAL_VERSION API=$API_VERSION"
-          else
-            echo "has_update=true" >> "$GITHUB_OUTPUT"
-            echo "New release detected. Local=$LOCAL_VERSION API=$API_VERSION"
-          fi
-
       - uses: actions/setup-node@v6
-        if: steps.version_check.outputs.has_update == 'true'
         with:
           node-version: "22"
 
-      - if: steps.version_check.outputs.has_update == 'true'
+      - name: Generate packages.json
+        id: generate
         run: node generate-packages-json.js
 
       - name: Commit and Push if Changed
-        if: steps.version_check.outputs.has_update == 'true'
+        env:
+          COMMIT_VERSION: ${{ steps.generate.outputs.commit_version }}
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          WP_VERSION=$(node -p 'Object.keys(require("./packages.json").packages["solidbunch/wordpress-core"])[0]')
+          if [ -n "$COMMIT_VERSION" ]; then
+            COMMIT_MESSAGE="🔄 Update WordPress core to $COMMIT_VERSION"
+          else
+            COMMIT_MESSAGE="🔄 Update WordPress core metadata"
+          fi
           git add packages.json
-          git diff --cached --quiet || git commit -m "🔄 Update WordPress core to $WP_VERSION"
+          git diff --cached --quiet || git commit -m "$COMMIT_MESSAGE"
           git push
+
+      - name: Fail if the run was incomplete
+        if: ${{ (steps.generate.outputs.incomplete || '0') != '0' }}
+        env:
+          INCOMPLETE: ${{ steps.generate.outputs.incomplete }}
+        run: |
+          echo "::error::$INCOMPLETE version(s) deferred; see the generator log"
+          exit 1
