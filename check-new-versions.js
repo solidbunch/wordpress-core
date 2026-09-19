@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const { VARIANTS, VERSION_RE, SHASUM_RE, DOWNLOAD_BASE } = require('./lib/constants');
+const { VARIANTS, VERSION_RE, SHASUM_RE, probeBase } = require('./lib/constants');
 const { isObject } = require('./lib/util');
 const { httpGet, withRetries } = require('./lib/http');
 
@@ -88,14 +88,18 @@ async function main() {
   if (missing.length === 0) return finish(false, `All ${offered.size} offered version(s) are in ${PACKAGES_FILE}`);
 
   for (const { variant, version } of missing) {
-    const url = `${DOWNLOAD_BASE}wordpress-${version}${variant.suffix}.zip.sha1`;
+    const url = `${probeBase()}wordpress-${version}${variant.suffix}.zip.sha1`;
     if ((await get(url, judgeProbe)).exists) return finish(true, `${variant.name} ${version} is offered, missing and its archive exists`);
     console.log(`SKIPPED-NO-ARCHIVE: ${variant.name} ${version}: ${url} returned 404`);
   }
   return finish(false, `${missing.length} offered package version(s) have no archive yet`);
 }
 
-main().catch((err) => {
-  console.error(`FATAL: ${err.message}`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`FATAL: ${err.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { main, readPackages, fetchOfferedVersions, judgeProbe };
