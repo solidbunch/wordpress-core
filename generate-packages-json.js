@@ -386,7 +386,27 @@ async function main() {
   await (args.length ? check() : generate());
 }
 
-main().catch((err) => {
-  console.error(`FATAL: ${err.message}`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`FATAL: ${err.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  validate,
+  validateEntry,
+  buildEntry,
+  storedFields,
+  newFields,
+  metadataFromSibling,
+  metadataFromOffer,
+  parseVersionPhp,
+  readVersionPhpAssignment,
+  asymmetricLines,
+  resolveExisting,
+  resolveNew,
+  resolveVersion,
+  check,
+  generate
+};
