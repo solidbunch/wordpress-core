@@ -12,7 +12,11 @@ const {
   VERSION_RE,
   SHASUM_RE,
   PHP_REQUIREMENT_RE,
-  VARIANTS
+  VARIANTS,
+  HOMEPAGE,
+  SUPPORT,
+  CORE_IMPLEMENTATION,
+  SOURCE_URL
 } = require('./lib/constants');
 const { isObject, distUrl, normalizeHost } = require('./lib/util');
 const { compareVersions, findDuplicates } = require('./lib/versions');
@@ -24,6 +28,8 @@ const PACKAGES_FILE = 'packages.json';
 const API_RETRIES = 2;
 const NEW_ENTRY_RETRIES = 2;
 const EXISTING_ENTRY_RETRIES = 5;
+
+const ALLOWED_ENTRY_FIELDS = ['name', 'version', 'type', 'description', 'keywords', 'homepage', 'license', 'support', 'require', 'provide', 'source', 'dist', 'extra'];
 
 async function fetchJson(url) {
   const outcome = await withRetries(async () => {
@@ -114,6 +120,31 @@ function validateEntry(variant, key, entry) {
   if (entry.type !== 'wordpress-core') violations.push(`TYPE: ${at} has type ${JSON.stringify(entry.type)}`);
   if (entry.license !== LICENSE) violations.push(`LICENSE: ${at} has license ${JSON.stringify(entry.license)}`);
 
+  if (entry.description !== variant.description) {
+    violations.push(`DESCRIPTION: ${at} has description ${JSON.stringify(entry.description)}, expected ${JSON.stringify(variant.description)}`);
+  }
+  if (JSON.stringify(entry.keywords) !== JSON.stringify(variant.keywords)) {
+    violations.push(`KEYWORDS: ${at} has keywords ${JSON.stringify(entry.keywords)}, expected ${JSON.stringify(variant.keywords)}`);
+  }
+  if (entry.homepage !== HOMEPAGE) {
+    violations.push(`HOMEPAGE: ${at} has homepage ${JSON.stringify(entry.homepage)}, expected ${JSON.stringify(HOMEPAGE)}`);
+  }
+  if (JSON.stringify(entry.support) !== JSON.stringify(SUPPORT)) {
+    violations.push(`SUPPORT: ${at} has support ${JSON.stringify(entry.support)}, expected ${JSON.stringify(SUPPORT)}`);
+  }
+  const expectedProvide = { [CORE_IMPLEMENTATION]: key };
+  if (JSON.stringify(entry.provide) !== JSON.stringify(expectedProvide)) {
+    violations.push(`PROVIDE: ${at} has provide ${JSON.stringify(entry.provide)}, expected ${JSON.stringify(expectedProvide)}`);
+  }
+  if (variant.hasSource) {
+    const expectedSource = { type: 'git', url: SOURCE_URL, reference: key };
+    if (JSON.stringify(entry.source) !== JSON.stringify(expectedSource)) {
+      violations.push(`SOURCE: ${at} has source ${JSON.stringify(entry.source)}, expected ${JSON.stringify(expectedSource)}`);
+    }
+  } else if (entry.source !== undefined) {
+    violations.push(`SOURCE: ${at} must not declare a source`);
+  }
+
   const require = entry.require;
   if (!isObject(require) || Object.keys(require).join() !== 'php' || !PHP_REQUIREMENT_RE.test(require.php)) {
     violations.push(`REQUIRE: ${at} has require ${JSON.stringify(require)}, expected {"php": ">=X.Y"}`);
@@ -135,6 +166,10 @@ function validateEntry(variant, key, entry) {
   if (extra !== undefined && (!isObject(extra) || Object.keys(extra).join() !== 'mysql_version' || typeof extra.mysql_version !== 'string')) {
     violations.push(`EXTRA: ${at} has extra ${JSON.stringify(extra)}, expected only {"mysql_version": "<string>"}`);
   }
+
+  const unknown = Object.keys(entry).filter((field) => !ALLOWED_ENTRY_FIELDS.includes(field));
+  if (unknown.length) violations.push(`UNKNOWN-FIELD: ${at} has unexpected field(s) ${JSON.stringify(unknown)}`);
+
   return violations;
 }
 
@@ -149,15 +184,21 @@ function asymmetricLines(packages) {
   return lines;
 }
 
-function buildEntry(fields, url, shasum) {
+function buildEntry(variant, fields, url, shasum) {
   const entry = {
     name: fields.name,
     version: fields.version,
     type: fields.type,
+    description: variant.description,
+    keywords: [...variant.keywords],
+    homepage: HOMEPAGE,
     license: LICENSE,
+    support: { ...SUPPORT },
     require: fields.require,
-    dist: { type: fields.distType, url, shasum }
+    provide: { [CORE_IMPLEMENTATION]: fields.version }
   };
+  if (variant.hasSource) entry.source = { type: 'git', url: SOURCE_URL, reference: fields.version };
+  entry.dist = { type: fields.distType, url, shasum };
   if (fields.extra !== undefined) entry.extra = fields.extra;
   return entry;
 }
@@ -200,10 +241,10 @@ async function resolveExisting(variant, version, stored) {
   const fields = storedFields(stored);
   const storedShasum = stored?.dist?.shasum;
   if (typeof storedShasum === 'string' && SHASUM_RE.test(storedShasum)) {
-    return { status: 'kept', entry: buildEntry(fields, url, storedShasum) };
+    return { status: 'kept', entry: buildEntry(variant, fields, url, storedShasum) };
   }
   const result = await fetchShasum(url, EXISTING_ENTRY_RETRIES);
-  if (result.shasum) return { status: 'kept', entry: buildEntry(fields, url, result.shasum) };
+  if (result.shasum) return { status: 'kept', entry: buildEntry(variant, fields, url, result.shasum) };
   const cause = result.missing
     ? 'HTTP 404, the archive does not exist (withdrawn upstream, or the stored URL is wrong)'
     : `${result.failure} (after ${EXISTING_ENTRY_RETRIES} retries)`;
@@ -259,7 +300,7 @@ async function resolveNew(variant, version, sibling, offer, getVersionPhpMetadat
     if (fetched.failure) return { status: 'deferred', reason: `${variant.name} ${version}: ${fetched.failure}` };
     metadata = fetched.metadata;
   }
-  return { status: 'added', entry: buildEntry(newFields(variant, version, metadata), url, result.shasum) };
+  return { status: 'added', entry: buildEntry(variant, newFields(variant, version, metadata), url, result.shasum) };
 }
 
 async function resolveVersion(version, previous, offer) {
@@ -380,10 +421,53 @@ async function check() {
   console.log(`${PACKAGES_FILE} passes all invariants`);
 }
 
+// Rebuilds every entry through buildEntry from data already in the file. Performs zero network
+// requests; never adds or removes a version. Reusable whenever buildEntry's computed fields change.
+async function backfill() {
+  const stored = readPackages({ required: true });
+  const packages = {};
+  const badEntries = [];
+  for (const variant of VARIANTS) {
+    const entries = stored[variant.name] || {};
+    packages[variant.name] = {};
+    for (const key of Object.keys(entries)) {
+      const entry = entries[key];
+      const url = normalizeHost(entry?.dist?.url);
+      const shasum = entry?.dist?.shasum;
+      if (url === undefined || typeof shasum !== 'string' || !SHASUM_RE.test(shasum)) {
+        badEntries.push(`${variant.name} ${key}: dist.url=${JSON.stringify(entry?.dist?.url)}, dist.shasum=${JSON.stringify(shasum)}`);
+        continue;
+      }
+      packages[variant.name][key] = buildEntry(variant, storedFields(entry), url, shasum);
+    }
+  }
+  if (badEntries.length) {
+    throw new Error(`${badEntries.length} entr${badEntries.length === 1 ? 'y has' : 'ies have'} no usable dist.url/dist.shasum, nothing written:\n${badEntries.join('\n')}`);
+  }
+
+  const violations = validate(packages, stored);
+  if (violations.length) throw new Error(`${violations.length} invariant violation(s), nothing written:\n${violations.join('\n')}`);
+
+  for (const variant of VARIANTS) {
+    const beforeKeys = Object.keys(stored[variant.name] || {});
+    const afterKeys = Object.keys(packages[variant.name]);
+    if (JSON.stringify(beforeKeys) !== JSON.stringify(afterKeys)) {
+      throw new Error(`${variant.name}: backfill changed the key count or order, nothing written`);
+    }
+  }
+
+  fs.writeFileSync(PACKAGES_FILE, `${JSON.stringify({ packages }, null, 2)}\n`);
+
+  for (const variant of VARIANTS) console.log(`${variant.name}: ${Object.keys(packages[variant.name]).length} versions rebuilt`);
+}
+
 async function main() {
   const args = process.argv.slice(2);
-  if (args.length > 1 || (args.length === 1 && args[0] !== '--check')) throw new Error('usage: node generate-packages-json.js [--check]');
-  await (args.length ? check() : generate());
+  const usage = 'usage: node generate-packages-json.js [--check|--backfill]';
+  if (args.length > 1 || (args.length === 1 && args[0] !== '--check' && args[0] !== '--backfill')) throw new Error(usage);
+  if (args[0] === '--check') return check();
+  if (args[0] === '--backfill') return backfill();
+  return generate();
 }
 
 if (require.main === module) {
@@ -408,5 +492,6 @@ module.exports = {
   resolveNew,
   resolveVersion,
   check,
-  generate
+  generate,
+  backfill
 };

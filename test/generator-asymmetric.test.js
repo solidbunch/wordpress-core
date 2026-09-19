@@ -12,6 +12,7 @@ const [noContent, full] = VARIANTS;
 
 function entryFor(variant, version) {
   return buildEntry(
+    variant,
     { name: variant.name, version, type: 'wordpress-core', require: { php: '>=7.4' }, distType: 'zip', extra: undefined },
     distUrl(variant, version),
     SHASUM

@@ -12,6 +12,7 @@ const [noContent, full] = VARIANTS;
 
 function entryFor(variant, version) {
   return buildEntry(
+    variant,
     { name: variant.name, version, type: 'wordpress-core', require: { php: '>=7.4' }, distType: 'zip', extra: undefined },
     distUrl(variant, version),
     SHASUM
@@ -150,4 +151,46 @@ test('validateEntry: EXTRA when extra has unexpected shape', () => {
   assert.equal(violationsFor('EXTRA', validateEntry(full, '6.9', { ...base, extra: { mysql_version: 5 } })).length, 1);
   assert.equal(violationsFor('EXTRA', validateEntry(full, '6.9', { ...base, extra: { mysql_version: '5.5.5', other: 'x' } })).length, 1);
   assert.deepEqual(validateEntry(full, '6.9', { ...base, extra: { mysql_version: '5.5.5' } }), []);
+});
+
+test('validateEntry: DESCRIPTION when entry.description does not match the variant', () => {
+  const entry = { ...entryFor(full, '6.9'), description: 'wrong' };
+  assert.equal(violationsFor('DESCRIPTION', validateEntry(full, '6.9', entry)).length, 1);
+});
+
+test('validateEntry: KEYWORDS when entry.keywords does not match the variant', () => {
+  const entry = { ...entryFor(full, '6.9'), keywords: ['wrong'] };
+  assert.equal(violationsFor('KEYWORDS', validateEntry(full, '6.9', entry)).length, 1);
+});
+
+test('validateEntry: HOMEPAGE when entry.homepage is not the canonical URL', () => {
+  const entry = { ...entryFor(full, '6.9'), homepage: 'https://example.com' };
+  assert.equal(violationsFor('HOMEPAGE', validateEntry(full, '6.9', entry)).length, 1);
+});
+
+test('validateEntry: SUPPORT when entry.support does not match the canonical object', () => {
+  const entry = { ...entryFor(full, '6.9'), support: { issues: 'https://example.com' } };
+  assert.equal(violationsFor('SUPPORT', validateEntry(full, '6.9', entry)).length, 1);
+});
+
+test('validateEntry: PROVIDE when entry.provide does not point at the key version', () => {
+  const entry = { ...entryFor(full, '6.9'), provide: { 'wordpress/core-implementation': '6.8' } };
+  assert.equal(violationsFor('PROVIDE', validateEntry(full, '6.9', entry)).length, 1);
+});
+
+test('validateEntry: SOURCE when the full variant has a wrong source', () => {
+  const base = entryFor(full, '6.9');
+  const entry = { ...base, source: { ...base.source, reference: '6.8' } };
+  assert.equal(violationsFor('SOURCE', validateEntry(full, '6.9', entry)).length, 1);
+});
+
+test('validateEntry: SOURCE when the no-content variant declares a source', () => {
+  const base = entryFor(noContent, '6.9');
+  const entry = { ...base, source: { type: 'git', url: 'https://github.com/WordPress/WordPress.git', reference: '6.9' } };
+  assert.deepEqual(validateEntry(noContent, '6.9', entry), [`SOURCE: ${noContent.name} 6.9 must not declare a source`]);
+});
+
+test('validateEntry: UNKNOWN-FIELD when the entry carries a field outside the allowed set', () => {
+  const entry = { ...entryFor(full, '6.9'), unexpected: 'x' };
+  assert.deepEqual(violationsFor('UNKNOWN-FIELD', validateEntry(full, '6.9', entry)), [`UNKNOWN-FIELD: ${full.name} 6.9 has unexpected field(s) ["unexpected"]`]);
 });
