@@ -63,13 +63,37 @@ function readPackages({ required }) {
   return readPackagesFile(PACKAGES_FILE, { required });
 }
 
+// packages.json only grows over time (adding Composer metadata to every entry took it from ~672 KB
+// to ~1.46 MB), so give `git show` a generous maxBuffer well above Node's 1 MiB default. Without this,
+// execFileSync throws ENOBUFS once the file crosses 1 MiB and the baseline was silently treated as
+// absent, disabling the LOST-VERSION/SHRUNK checks below.
+const GIT_SHOW_MAX_BUFFER = 256 * 1024 * 1024; // 256 MiB
+
 function readGitBaseline() {
+  let text;
   try {
-    const text = execFileSync('git', ['show', `HEAD:./${PACKAGES_FILE}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-    return parsePackages(text, `HEAD:${PACKAGES_FILE}`);
-  } catch {
-    return null;
+    text = execFileSync('git', ['show', `HEAD:./${PACKAGES_FILE}`], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: GIT_SHOW_MAX_BUFFER
+    });
+  } catch (err) {
+    // Legitimate "no baseline" cases, where git ran and reported it has nothing to show: git is not
+    // installed (ENOENT), or git exited with a non-zero status because there is no repository, no
+    // HEAD, or PACKAGES_FILE did not exist at HEAD yet (all reported as a non-zero exit, typically
+    // 128). Anything else - most notably ENOBUFS from a too-small maxBuffer, or any other unexpected
+    // failure - means a baseline exists but could not be read, and must not be conflated with "no
+    // baseline": doing so would silently disable the LOST-VERSION/SHRUNK invariant checks.
+    // Residual trade-off: git's stderr is discarded (redirected to 'ignore' above), so any non-zero
+    // git exit - including rare causes such as a corrupted object store - is indistinguishable from
+    // the legitimate "no repository/HEAD/file" cases and is treated as "no baseline".
+    if (err.code === 'ENOENT' || typeof err.status === 'number') return null;
+    throw new Error(`could not read git baseline HEAD:${PACKAGES_FILE}: ${err.message}`);
   }
+  // The baseline exists and was read; parsePackages already includes the "HEAD:packages.json" label
+  // in its error message, so let that error propagate as-is rather than wrapping it again. It must
+  // fail loudly rather than being treated as "no baseline".
+  return parsePackages(text, `HEAD:${PACKAGES_FILE}`);
 }
 
 function validate(packages, previous) {
