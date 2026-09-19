@@ -8,9 +8,14 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: wp-core-repo-write
+  cancel-in-progress: false
+
 jobs:
   keepalive:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -27,4 +32,4 @@ jobs:
           git config user.email "actions@github.com"
           git add .github/keepalive/last-activity.txt
           git diff --cached --quiet || git commit -m "chore: keepalive heartbeat"
-          git push
+          git pull --rebase --autostash origin "$GITHUB_REF_NAME" && git push

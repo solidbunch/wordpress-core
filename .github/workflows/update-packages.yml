@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: update-wordpress-core
+  group: wp-core-repo-write
   cancel-in-progress: false
 
 jobs:
@@ -41,7 +41,7 @@ jobs:
           fi
           git add packages.json
           git diff --cached --quiet || git commit -m "$COMMIT_MESSAGE"
-          git push
+          git pull --rebase --autostash origin "$GITHUB_REF_NAME" && git push
 
       - name: Fail if the run was incomplete
         if: ${{ (steps.generate.outputs.incomplete || '0') != '0' }}
