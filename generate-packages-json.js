@@ -5,8 +5,16 @@ const { execFileSync } = require('child_process');
 
 const PACKAGES_FILE = 'packages.json';
 const API_URL = 'https://api.wordpress.org/core/version-check/1.7/';
+const STABLE_CHECK_URL = 'https://api.wordpress.org/core/stable-check/1.0/';
+const VERSION_PHP_URLS = [
+  (version) => `https://core.svn.wordpress.org/tags/${version}/wp-includes/version.php`,
+  (version) => `https://raw.githubusercontent.com/WordPress/WordPress/${version}/wp-includes/version.php`
+];
 const DOWNLOAD_BASE = 'https://downloads.wordpress.org/release/';
 const DOWNLOAD_HOST = 'downloads.wordpress.org';
+
+// Oldest branch ever published here; limits enumeration only
+const MIN_VERSION = '4.1';
 
 const VERSION_RE = /^\d+\.\d+(\.\d+)?$/;
 const SHASUM_RE = /^[0-9a-f]{40}$/;
@@ -92,7 +100,7 @@ async function withRetries(retries, attempt) {
   return { failure: reason };
 }
 
-const describeResponse = (res) => `HTTP ${res.status}: ${res.body.trim().slice(0, 500)}`;
+const describeResponse = (res) => `HTTP ${res.status}: ${res.body.trim().replace(/\s+/g, ' ').slice(0, 500)}`;
 
 async function fetchJson(url) {
   const outcome = await withRetries(API_RETRIES, async () => {
@@ -312,22 +320,66 @@ async function resolveExisting(variant, version, stored) {
   return { status: 'failed', reason: `${variant.name} ${version}: existing entry has no obtainable shasum from ${url}.sha1: ${cause}` };
 }
 
-async function resolveNew(variant, version, sibling, offer) {
+function readVersionPhpAssignment(text, name) {
+  const matches = [...text.matchAll(new RegExp(`^[ \\t]*\\$${name}[ \\t]*=[ \\t]*(['"])(\\d+(?:\\.\\d+){1,2})\\1[ \\t]*;`, 'gm'))];
+  return matches.length === 1 ? matches[0][2] : null;
+}
+
+function parseVersionPhp(text) {
+  const phpVersion = readVersionPhpAssignment(text, 'required_php_version');
+  const mysqlVersion = readVersionPhpAssignment(text, 'required_mysql_version');
+  if (phpVersion === null || mysqlVersion === null) return null;
+  const php = `>=${phpVersion.split('.').slice(0, 2).join('.')}`;
+  if (!PHP_REQUIREMENT_RE.test(php)) return null;
+  return { php, extra: { mysql_version: mysqlVersion } };
+}
+
+// The last metadata source: only asked for a new version that has no sibling and no usable offer
+async function fetchVersionPhpMetadata(version) {
+  const outcomes = [];
+  for (const buildUrl of VERSION_PHP_URLS) {
+    const url = buildUrl(version);
+    const outcome = await withRetries(NEW_ENTRY_RETRIES, async () => {
+      const res = await httpGet(url);
+      if (res.error) return { retry: res.error };
+      if (res.status === 404) return { missing: true };
+      if (res.status !== 200) return { retry: describeResponse(res) };
+      const metadata = parseVersionPhp(res.body);
+      if (!metadata) return { retry: 'HTTP 200 but the body has no single $required_php_version and $required_mysql_version assignment' };
+      return { metadata };
+    });
+    if (outcome.metadata) return { metadata: outcome.metadata };
+    outcomes.push({ url, outcome });
+  }
+  if (outcomes.every(({ outcome }) => outcome.missing)) {
+    return { failure: `EXCEPTION: no metadata source, version.php returned 404 from ${outcomes.map(({ url }) => url).join(' and ')} although the archive exists` };
+  }
+  const causes = outcomes.map(({ url, outcome }) => `${url}: ${outcome.missing ? 'HTTP 404' : `${outcome.failure} (after ${NEW_ENTRY_RETRIES} retries)`}`);
+  return { failure: `no metadata source, ${causes.join('; ')}` };
+}
+
+async function resolveNew(variant, version, sibling, offer, getVersionPhpMetadata) {
   const url = distUrl(variant, version);
   const result = await fetchShasum(url, NEW_ENTRY_RETRIES);
   if (result.missing) return { status: 'skipped', reason: `${variant.name} ${version}: ${url}.sha1 returned 404` };
   if (result.failure) return { status: 'deferred', reason: `${variant.name} ${version}: ${result.failure}` };
-  const metadata = sibling ? metadataFromSibling(sibling) : metadataFromOffer(offer);
-  if (!metadata) return { status: 'deferred', reason: `${variant.name} ${version}: no source for the PHP requirement` };
+  let metadata = sibling ? metadataFromSibling(sibling) : metadataFromOffer(offer);
+  if (!metadata) {
+    const fetched = await getVersionPhpMetadata();
+    if (fetched.failure) return { status: 'deferred', reason: `${variant.name} ${version}: ${fetched.failure}` };
+    metadata = fetched.metadata;
+  }
   return { status: 'added', entry: buildEntry(newFields(variant, version, metadata), url, result.shasum) };
 }
 
 async function resolveVersion(version, previous, offer) {
+  let versionPhpMetadata;
+  const getVersionPhpMetadata = () => (versionPhpMetadata ??= fetchVersionPhpMetadata(version));
   const results = await Promise.all(VARIANTS.map((variant) => {
     const stored = previous[variant.name]?.[version];
     if (stored !== undefined) return resolveExisting(variant, version, stored);
     const other = VARIANTS.find((candidate) => candidate !== variant);
-    return resolveNew(variant, version, previous[other.name]?.[version], offer);
+    return resolveNew(variant, version, previous[other.name]?.[version], offer, getVersionPhpMetadata);
   }));
   // A transient failure on one new variant defers the whole version so it is never half published
   if (results.some((result) => result.status === 'deferred')) {
@@ -352,6 +404,19 @@ async function fetchOffers() {
   return { byVersion, ignored };
 }
 
+async function fetchStableVersions() {
+  const statuses = await fetchJson(STABLE_CHECK_URL);
+  if (!isObject(statuses) || Object.keys(statuses).length === 0) throw new Error(`${STABLE_CHECK_URL} returned no version object`);
+  const versions = [];
+  const ignored = [];
+  for (const key of Object.keys(statuses)) {
+    if (!VERSION_RE.test(key)) ignored.push(`IGNORED-VERSION: ${JSON.stringify(key)} (from stable-check)`);
+    else if (compareVersions(key, MIN_VERSION) >= 0) versions.push(key);
+  }
+  if (versions.length === 0) throw new Error(`${STABLE_CHECK_URL} lists no stable version >= ${MIN_VERSION}, refusing to run without enumeration`);
+  return { versions, ignored };
+}
+
 function printReport(packages, added, lists) {
   for (const variant of VARIANTS) console.log(`${variant.name}: ${Object.keys(packages[variant.name]).length} versions`);
   console.log(`Added versions: ${added.length ? added.join(', ') : 'none'}`);
@@ -368,8 +433,10 @@ async function generate() {
     }
   }
 
-  const { byVersion: offerByVersion, ignored } = await fetchOffers();
-  const versions = new Set([...existingVersions, ...offerByVersion.keys()]);
+  const { byVersion: offerByVersion, ignored: ignoredOffers } = await fetchOffers();
+  const { versions: stableVersions, ignored: ignoredStable } = await fetchStableVersions();
+  const ignored = [...ignoredOffers, ...ignoredStable];
+  const versions = new Set([...existingVersions, ...offerByVersion.keys(), ...stableVersions]);
   const duplicates = findDuplicates(versions);
   if (duplicates.length) throw new Error(duplicates.join('\n'));
   const sorted = [...versions].sort((a, b) => compareVersions(b, a));
