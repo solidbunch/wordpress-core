@@ -69,7 +69,7 @@ Branch releases are named exactly as WordPress names them (e.g. `7.1`, `6.9`, `4
 
 All packages include:
 
-- `license: MIT`
+- `license: GPL-2.0-or-later`: the license of the WordPress archive itself (the scripts in this repository are MIT, see `LICENSE.md`)
 - `require.php`: the PHP requirement of each release (`>=X.Y`), taken from the WordPress API or from the release's own `wp-includes/version.php`
 - Optional `extra.mysql_version` field for advanced tooling
 - `dist.shasum`: the SHA-1 of the release archive, taken from the `.sha1` file that wordpress.org publishes next to each archive (e.g. `https://downloads.wordpress.org/release/wordpress-7.1.zip.sha1`). Composer verifies it on download.

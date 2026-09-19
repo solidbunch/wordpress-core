@@ -13,6 +13,9 @@ const VERSION_PHP_URLS = [
 const DOWNLOAD_BASE = 'https://downloads.wordpress.org/release/';
 const DOWNLOAD_HOST = 'downloads.wordpress.org';
 
+// License of the WordPress archives the entries point to, not of this repository's own code
+const LICENSE = 'GPL-2.0-or-later';
+
 // Oldest branch ever published here; limits enumeration only
 const MIN_VERSION = '4.1';
 
@@ -209,7 +212,7 @@ function validateEntry(variant, key, entry) {
   if (entry.name !== variant.name) violations.push(`NAME: ${at} has name ${JSON.stringify(entry.name)}`);
   if (entry.version !== key) violations.push(`VERSION: ${at} has version ${JSON.stringify(entry.version)}`);
   if (entry.type !== 'wordpress-core') violations.push(`TYPE: ${at} has type ${JSON.stringify(entry.type)}`);
-  if (entry.license !== 'MIT') violations.push(`LICENSE: ${at} has license ${JSON.stringify(entry.license)}`);
+  if (entry.license !== LICENSE) violations.push(`LICENSE: ${at} has license ${JSON.stringify(entry.license)}`);
 
   const require = entry.require;
   if (!isObject(require) || Object.keys(require).join() !== 'php' || !PHP_REQUIREMENT_RE.test(require.php)) {
@@ -262,7 +265,7 @@ function buildEntry(fields, url, shasum) {
     name: fields.name,
     version: fields.version,
     type: fields.type,
-    license: fields.license,
+    license: LICENSE,
     require: fields.require,
     dist: { type: fields.distType, url, shasum }
   };
@@ -274,7 +277,6 @@ const storedFields = (stored) => ({
   name: stored?.name,
   version: stored?.version,
   type: stored?.type,
-  license: stored?.license,
   require: stored?.require,
   distType: stored?.dist?.type,
   extra: stored?.extra
@@ -285,7 +287,6 @@ function newFields(variant, version, metadata) {
     name: variant.name,
     version,
     type: 'wordpress-core',
-    license: 'MIT',
     require: { php: metadata.php },
     distType: 'zip',
     extra: metadata.extra
