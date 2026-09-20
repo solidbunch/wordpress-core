@@ -25,6 +25,7 @@ const { compareVersions, findDuplicates, isPrerelease } = require('./lib/version
 const { httpGet, httpGetBuffer, describeResponse, withRetries } = require('./lib/http');
 const { sha1, md5, MD5_RE } = require('./lib/checksums');
 const { parsePackages, readPackagesFile } = require('./lib/packages-file');
+const { parseHeaderDate, toIso, formatLag } = require('./lib/time');
 
 const PACKAGES_FILE = 'packages.json';
 
@@ -518,30 +519,6 @@ function printReport(packages, added, lists) {
   for (const variant of VARIANTS) console.log(`${variant.name}: ${Object.keys(packages[variant.name]).length} versions`);
   console.log(`Added versions: ${added.length ? added.join(', ') : 'none'}`);
   for (const line of [...lists.skipped, ...lists.noMd5, ...lists.asymmetric, ...lists.deferred, ...lists.ignored]) console.log(line);
-}
-
-// Any text taken from an HTTP header is untrusted: only a parsed Date (rendered as ISO 8601 UTC) or
-// the literal "unknown" ever reaches the summary - never the raw header string.
-function parseHeaderDate(value) {
-  if (typeof value !== 'string' || value === '') return null;
-  const ms = Date.parse(value);
-  return Number.isNaN(ms) ? null : new Date(ms);
-}
-
-const toIso = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z');
-
-// Largest-two-unit rendering, e.g. "9m 33s", "2h 15m", "3d 4h". Clamped to zero so clock skew never
-// renders a negative lag.
-function formatLag(milliseconds) {
-  const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
 }
 
 // Table cells are our own version/package strings plus derived values, but escape defensively
