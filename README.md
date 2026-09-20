@@ -128,6 +128,77 @@ This plugin recognizes `type: wordpress-core` and places the archive into the sp
 
 ---
 
+## 🔁 Migrating from johnpbloch/wordpress-core
+
+### `composer.json` changes
+
+Before (johnpbloch):
+
+```json
+{
+  "require": {
+    "johnpbloch/wordpress": "^6.9"
+  },
+  "extra": {
+    "wordpress-install-dir": "web/wp-core"
+  }
+}
+```
+
+After (solidbunch):
+
+```json
+{
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://solidbunch.github.io/wordpress-core"
+    }
+  ],
+  "require": {
+    "solidbunch/wordpress-core": "^6.9",
+    "solidbunch/composer-installers": "*"
+  },
+  "extra": {
+    "installer-paths": {
+      "web/wp-core/": [
+        "type:wordpress-core"
+      ]
+    }
+  }
+}
+```
+
+Remove `johnpbloch/wordpress` (or `johnpbloch/wordpress-core`) and `johnpbloch/wordpress-core-installer` from `require`. Add the repository entry above (or, once this repository is published on Packagist, no `repositories` entry is needed) and `solidbunch/wordpress-core`.
+
+### Installer swap
+
+johnpbloch's installer places the archive using `extra.wordpress-install-dir`. This repository does not ship its own installer plugin; instead it relies on [`solidbunch/composer-installers`](https://packagist.org/packages/solidbunch/composer-installers) and the `extra.installer-paths` convention:
+
+```json
+"extra": {
+  "installer-paths": {
+    "web/wp-core/": [
+      "type:wordpress-core"
+    ]
+  }
+}
+```
+
+The `type:wordpress-core` rule is **required**, not optional. Composer's installer-paths mechanism calls `supports($packageType)` on the installer plugin, and that method only receives the package's `type` field — never its name or vendor. A rule based on `vendor:solidbunch` or `solidbunch/wordpress-core` alone would not work here; only `type:wordpress-core` (or a wildcard `type:*`) causes `solidbunch/composer-installers` to place the package.
+
+### Honest limitations
+
+- **`composer.lock` does not migrate automatically.** The version numbers published by this repository are identical to WordPress's own (e.g. `7.1.1`), but `johnpbloch/wordpress` and `solidbunch/wordpress-core` are different Composer package names. Composer has no way to infer that one replaces the other, so the old lock entry is simply removed and a new one is added for the new name — there is no in-place version bump.
+- **Checksum re-fetch limit still applies**, as already noted above: an entry that already has a valid checksum is never re-fetched. This applies equally to a freshly migrated `composer.lock` entry once it is committed.
+- **`provide: wordpress/core-implementation` makes core packages mutually exclusive.** Both `solidbunch/wordpress-core` and `solidbunch/wordpress-core-no-content` declare `provide: { "wordpress/core-implementation": "<version>" }`. If another package in the same project (e.g. `johnpbloch/wordpress` or a different core-implementation package) also declares this same virtual package, Composer will refuse to install both at once. This conflict is intentional: a project should have exactly one WordPress core implementation installed.
+
+### Unverified
+
+**Unverified**: which package names WordPress core's existing published security advisories are filed under (`composer audit` cross-references named packages) has not been confirmed. As a result, `composer audit` does not inherit any advisory history under `solidbunch/wordpress-core` or `solidbunch/wordpress-core-no-content` — migrating does not carry over any advisory coverage that may exist for `johnpbloch/*` or other package names.
+
+---
+
 ## ⚙ Automatic generation
 
 The `packages.json` is kept up to date by the Node.js script `generate-packages-json.js` (included in this repository), which is run by GitHub Actions. The script `check-new-versions.js` decides whether the generator needs to run; it never modifies `packages.json` (it only writes its `run=` output for the workflow).
