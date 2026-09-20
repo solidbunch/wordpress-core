@@ -2,6 +2,29 @@
 
 A Composer-compatible repository of WordPress core distributions maintained by SolidBunch for the [StarterKit](https://starter-kit.io).
 
+[![CI](https://github.com/solidbunch/wordpress-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/ci.yml)
+[![WordPress release watch](https://github.com/solidbunch/wordpress-core/actions/workflows/update-packages.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/update-packages.yml)
+[![Weekly checksum audit](https://github.com/solidbunch/wordpress-core/actions/workflows/audit-checksums.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/audit-checksums.yml)
+[![Repository Keepalive](https://github.com/solidbunch/wordpress-core/actions/workflows/keepalive.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/keepalive.yml)
+[![solidbunch/wordpress-core version](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress-core.json)](https://solidbunch.github.io/wordpress-core/status.json)
+[![solidbunch/wordpress-core-no-content version](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress-core-no-content.json)](https://solidbunch.github.io/wordpress-core/status.json)
+[![WordPress tracked](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress.json)](https://solidbunch.github.io/wordpress-core/status.json)
+[![Pickup lag](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fpickup-lag.json)](https://solidbunch.github.io/wordpress-core/status.json)
+
+| Badge | What it is | Where the number comes from |
+|---|---|---|
+| CI | last `ci.yml` run on `main` | GitHub Actions' own badge endpoint |
+| WordPress release watch | last `update-packages.yml` run on `main` | GitHub Actions' own badge endpoint |
+| Weekly checksum audit | last `audit-checksums.yml` run on `main` | GitHub Actions' own badge endpoint |
+| Repository Keepalive | last `keepalive.yml` run on `main` | GitHub Actions' own badge endpoint |
+| the two version badges | highest version present in `packages.json` for that variant | `badges/*.json`, generated from `packages.json` by `generate-packages-json.js --status`; a `(pre-release)` suffix means the newest entry is a beta or RC |
+| WordPress tracked | highest **stable** WordPress release present in `packages.json` | the same artifact; prereleases are deliberately excluded here |
+| Pickup lag | for the most recent version this repo added: the gap between the archive's own `Last-Modified` and the moment the generator observed it | the same measurement the run's job summary prints under `## Added versions`, carried into `status.json`; **a single past measurement, not an average and not a promise** |
+
+The raw data behind the last four badges is `https://solidbunch.github.io/wordpress-core/status.json`, readable directly if a badge image does not load. Those four badges are rendered by shields.io, a third-party service used without any account or credential; if it is unavailable or rate-limits, the images simply fail to load and nothing in this repository depends on it. Badge values can lag reality by roughly a quarter of an hour: GitHub Pages' CDN serves the artifact with `max-age=600` (see "Automatic generation" below) and shields.io caches an endpoint badge for at least 300 s. The pickup lag is the generator's own observation time; the client-visible delay is longer, as explained in the "Automatic generation" section's latency paragraph.
+
+Run `node validate-badges.js` to check every badge URL in this README against the live services. For each shields.io badge it makes two independent checks — the shields image endpoint and the underlying Pages artifact it reads from — and reports them separately, so a shields outage is never confused with a missing artifact. The validator reads the badge block itself, so it can never drift out of sync with the badges actually shown above. It also runs weekly, best-effort, via `.github/workflows/validate-badges.yml`, which only ever opens or comments on an issue and never gates a commit, push or PR, because the check depends on GitHub Pages and shields.io propagation that a commit has no control over.
+
 ---
 
 ## 🧩 Available Packages
@@ -58,6 +81,30 @@ Every stable WordPress release from the 4.1 branch onwards is kept and is never 
 
 Branch releases are named exactly as WordPress names them (e.g. `7.1`, `6.9`, `4.1`). Composer treats these as `7.1.0`, `6.9.0` and `4.1.0`.
 
+#### Installing pre-releases
+
+Pre-release versions (`X.Y-betaN`, `X.Y-RCN`, `X.Y.Z-RCN`) appear in `packages.json` only while WordPress is in a beta/RC window for that release. Once the window closes they are **not** removed — they stay available for anyone who already depends on them.
+
+Composer's default `minimum-stability` is `stable`, which will not install these versions. To install one, either:
+
+- Lower the project's minimum stability and keep preferring stable releases otherwise:
+  ```json
+  {
+    "minimum-stability": "beta",
+    "prefer-stable": true
+  }
+  ```
+- Or require the specific pre-release with an explicit stability flag:
+  ```json
+  {
+    "require": {
+      "solidbunch/wordpress-core": "7.2.*@RC"
+    }
+  }
+  ```
+
+**Unverified**: wordpress.org may publish only the full release archive for a pre-release, and not a matching `-no-content` archive. If that happens, `solidbunch/wordpress-core-no-content` simply has no entry for that version — whether this asymmetry actually occurs for beta/RC releases has not been confirmed.
+
 ---
 
 ## 📆 About the Packages
@@ -69,7 +116,7 @@ Branch releases are named exactly as WordPress names them (e.g. `7.1`, `6.9`, `4
 
 All packages include:
 
-- `license: MIT`
+- `license: GPL-2.0-or-later`: the license of the WordPress archive itself (the scripts in this repository are MIT, see `LICENSE.md`)
 - `require.php`: the PHP requirement of each release (`>=X.Y`), taken from the WordPress API or from the release's own `wp-includes/version.php`
 - Optional `extra.mysql_version` field for advanced tooling
 - `dist.shasum`: the SHA-1 of the release archive, taken from the `.sha1` file that wordpress.org publishes next to each archive (e.g. `https://downloads.wordpress.org/release/wordpress-7.1.zip.sha1`). Composer verifies it on download.
@@ -104,26 +151,114 @@ This plugin recognizes `type: wordpress-core` and places the archive into the sp
 
 ---
 
+## 🔁 Migrating from johnpbloch/wordpress-core
+
+### `composer.json` changes
+
+Before (johnpbloch):
+
+```json
+{
+  "require": {
+    "johnpbloch/wordpress": "^6.9"
+  },
+  "extra": {
+    "wordpress-install-dir": "web/wp-core"
+  }
+}
+```
+
+After (solidbunch):
+
+```json
+{
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://solidbunch.github.io/wordpress-core"
+    }
+  ],
+  "require": {
+    "solidbunch/wordpress-core": "^6.9",
+    "solidbunch/composer-installers": "*"
+  },
+  "extra": {
+    "installer-paths": {
+      "web/wp-core/": [
+        "type:wordpress-core"
+      ]
+    }
+  }
+}
+```
+
+Remove `johnpbloch/wordpress` (or `johnpbloch/wordpress-core`) and `johnpbloch/wordpress-core-installer` from `require`. Add the repository entry above (or, once this repository is published on Packagist, no `repositories` entry is needed) and `solidbunch/wordpress-core`.
+
+### Installer swap
+
+johnpbloch's installer places the archive using `extra.wordpress-install-dir`. This repository does not ship its own installer plugin; instead it relies on [`solidbunch/composer-installers`](https://packagist.org/packages/solidbunch/composer-installers) and the `extra.installer-paths` convention:
+
+```json
+"extra": {
+  "installer-paths": {
+    "web/wp-core/": [
+      "type:wordpress-core"
+    ]
+  }
+}
+```
+
+The `type:wordpress-core` rule is **required**, not optional. Composer's installer-paths mechanism calls `supports($packageType)` on the installer plugin, and that method only receives the package's `type` field — never its name or vendor. A rule based on `vendor:solidbunch` or `solidbunch/wordpress-core` alone would not work here; only `type:wordpress-core` (or a wildcard `type:*`) causes `solidbunch/composer-installers` to place the package.
+
+### Honest limitations
+
+- **`composer.lock` does not migrate automatically.** The version numbers published by this repository are identical to WordPress's own (e.g. `7.1.1`), but `johnpbloch/wordpress` and `solidbunch/wordpress-core` are different Composer package names. Composer has no way to infer that one replaces the other, so the old lock entry is simply removed and a new one is added for the new name — there is no in-place version bump.
+- **Checksum re-fetch limit still applies**, as already noted above: an entry that already has a valid checksum is never re-fetched. This applies equally to a freshly migrated `composer.lock` entry once it is committed.
+- **`provide: wordpress/core-implementation` makes core packages mutually exclusive.** Both `solidbunch/wordpress-core` and `solidbunch/wordpress-core-no-content` declare `provide: { "wordpress/core-implementation": "<version>" }`. If another package in the same project (e.g. `johnpbloch/wordpress` or a different core-implementation package) also declares this same virtual package, Composer will refuse to install both at once. This conflict is intentional: a project should have exactly one WordPress core implementation installed.
+
+### Unverified
+
+**Unverified**: which package names WordPress core's existing published security advisories are filed under (`composer audit` cross-references named packages) has not been confirmed. As a result, `composer audit` does not inherit any advisory history under `solidbunch/wordpress-core` or `solidbunch/wordpress-core-no-content` — migrating does not carry over any advisory coverage that may exist for `johnpbloch/*` or other package names.
+
+### Comparison with johnpbloch/wordpress-core
+
+|                       | `solidbunch/wordpress-core`                                                                                        | `johnpbloch/wordpress-core`         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `dist` source          | `downloads.wordpress.org` release archive                                                                             | GitHub zipball                       |
+| `dist.shasum`          | SHA-1 from the published `.sha1`, verified locally against the downloaded archive on first add, and re-checked weekly | empty (no checksum verification)     |
+| No-content variant     | yes                                                                                                                    | no                                    |
+| Pre-release versions   | yes, when wordpress.org publishes the archive                                                                         | no                                    |
+| Old versions           | every stable release from 4.1 onwards, never removed                                                                  | —                                     |
+
+---
+
 ## ⚙ Automatic generation
 
-The `packages.json` is kept up to date by the Node.js script `generate-packages-json.js` (included in this repository), which is run by GitHub Actions. The script `check-new-versions.js` decides whether the generator needs to run; it never modifies `packages.json` (it only writes its `run=` output for the workflow).
+The `packages.json` is kept up to date by the Node.js script `generate-packages-json.js` (included in this repository), which is run by GitHub Actions. The script `check-new-versions.js` decides whether the generator needs to run; it never modifies `packages.json` (it only writes its `run=` output for the workflow). It queries both the stable and the beta channel (`?channel=beta`) of the WordPress `version-check` API; a beta-channel failure is reported (`BETA-CHANNEL-UNAVAILABLE`) and ignored rather than failing the check, since the beta channel is advisory only.
 
-- `update-packages.yml` runs a light check about every 10 minutes (cron `3-59/10 * * * *`, deliberately off the hour). The check compares the versions offered by the WordPress `version-check` API with `packages.json` and starts the generator only when a new release whose archive is already published is missing. Once a day (cron `7 4 * * *`) it forces a full generator run, which also picks up versions that only `stable-check` lists. It can also be started manually (`workflow_dispatch`), which always forces a full generator run
+- `update-packages.yml` runs a light check about every 10 minutes (cron `3-59/10 * * * *`, deliberately off the hour). The check compares the versions offered by the WordPress `version-check` API with `packages.json` and starts the generator only when a new release whose archive is already published is missing. Once a day (cron `7 4 * * *`) it forces a full generator run, which also picks up versions that only `stable-check` lists. It can also be started manually (`workflow_dispatch`), which always forces a full generator run. If the `update` job fails, it opens a new GitHub issue or comments on the existing one; after a successful push, `packages.json` is attested with `actions/attest` — this is an audit trail for the file GitHub Actions produced, it does not prove the authenticity of the upstream WordPress archives themselves. A separate `publish` job in the same workflow tags new versions on the per-variant Packagist mirrors described above; it stays inert until the repository variables and the `PUBLISH_TOKEN` secret are configured, and it never pushes to this repository or changes what GitHub Pages serves.
+- `audit-checksums.yml` runs weekly (Monday 05:17 UTC) and re-checks the published `.sha1` of every entry already stored in `packages.json` against wordpress.org. It never overwrites anything; a mismatch fails the run and opens or comments on an issue.
+- `ci.yml` runs `node --test` and `node generate-packages-json.js --check` on every pull request and on every push to `main`.
 - `keepalive.yml` makes a monthly heartbeat commit (1st of the month, 06:00 UTC)
 
-The aim is to pick up a new release within 10–15 minutes, on a best-effort basis: GitHub documents that scheduled runs can be delayed under high load and that queued jobs may be dropped.
+All workflow steps that run a third-party action pin it to a commit SHA (not a floating tag); Dependabot proposes updates to those pins weekly.
+
+Each generator run also writes `status.json` and the `badges/` directory alongside `packages.json` in the same commit, so the README badges above always reflect the same run.
+
+No end-to-end guarantee is made on how quickly a new release appears in `packages.json` for a client. GitHub documents `schedule` triggers as best-effort: the ~10-minute cron above can be delayed by tens of minutes under high load, and a queued run can be dropped entirely. When the check does run and finds a release with a published archive, the generator itself needs a few minutes to download and verify each new archive before committing. After the commit, GitHub Pages needs to rebuild (typically 1–2 minutes), and its CDN serves `packages.json` with `max-age=600`, so a client can keep seeing the previous file for up to 10 more minutes even after Pages has rebuilt. In practice a release usually shows up within tens of minutes, but any single step above can push that further out. Each run's job summary lists every version it added, with the archive's own `Last-Modified` time and the time the generator observed it, so actual latency is observable rather than assumed.
 
 On every generator run:
 
 - the generator merges into the existing `packages.json` and never removes a version
 - it reads the official WordPress APIs `https://api.wordpress.org/core/version-check/1.7/` and `https://api.wordpress.org/core/stable-check/1.0/`, and adds every missing stable release from 4.1 onwards with its checksum
+- for each new version it downloads the archive and hashes it locally, comparing against the published `.sha1` (and the published `.md5`, when wordpress.org publishes one) rather than trusting the published checksum alone; a mismatch defers that version instead of writing it
 - it reads the PHP and MySQL requirements from the API or from the release's own `wp-includes/version.php`
 - it validates the result before writing it and refuses to write on any violation
 - the workflow commits only when `packages.json` changed
 - the run fails, with nothing committed, if the WordPress API is unreachable or validation fails
-- a version that could not be fully fetched is deferred: it is reported and picked up by the next run, while the rest is committed and the run then ends red
+- a version that could not be fully fetched, or whose downloaded archive fails checksum verification, is deferred: it is reported and picked up by the next run, while the rest is committed and the run then ends red
 
-To check a local `packages.json` offline, run `node generate-packages-json.js --check` from the repository root. It validates the file and, inside a git checkout, reports versions that are missing compared with `HEAD`. It exits with code 1 on any violation and never writes anything. Running the generator without `--check` rewrites `packages.json` and calls the WordPress API.
+To check a local `packages.json` offline, run `node generate-packages-json.js --check` from the repository root. It validates the file and, inside a git checkout, reports versions that are missing compared with `HEAD`. It exits with code 1 on any violation and never writes anything. Running the generator without `--check` rewrites `packages.json` and calls the WordPress API. `node generate-packages-json.js --backfill` rebuilds every entry from the data already in the file — no network access, deterministic and idempotent — for the rare case where a computed field's logic changes and existing entries need to be recomputed without re-fetching anything.
 
 ---
 

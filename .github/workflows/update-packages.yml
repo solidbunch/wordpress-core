@@ -1,4 +1,4 @@
-name: Update WordPress Core Package
+name: WordPress release watch
 
 on:
   schedule:
@@ -8,6 +8,7 @@ on:
 
 jobs:
   check:
+    name: Check wordpress.org for new releases
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -16,9 +17,9 @@ jobs:
       run: ${{ steps.gate.outputs.run }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
 
@@ -29,28 +30,46 @@ jobs:
         run: node check-new-versions.js
 
   update:
+    name: Update packages.json
     needs: check
     if: needs.check.outputs.run == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: write
+      issues: write
+      id-token: write
+      attestations: write
     concurrency:
       group: wp-core-repo-write
       cancel-in-progress: false
 
-    steps:
-      - uses: actions/checkout@v6
+    outputs:
+      has_token: ${{ steps.token.outputs.present }}
+      pushed: ${{ steps.push.outputs.pushed }}
 
-      - uses: actions/setup-node@v6
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
+
+      # Job-level `if:` cannot read `secrets.*` directly, so whether PUBLISH_TOKEN is configured is
+      # exposed as a job output here for the `publish` job's `if:` to consume.
+      - name: Detect the publishing token
+        id: token
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: |
+          if [ -n "$PUBLISH_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
 
       - name: Generate packages.json
         id: generate
         run: node generate-packages-json.js
 
       - name: Commit and Push if Changed
+        id: push
         env:
           COMMIT_VERSION: ${{ steps.generate.outputs.commit_version }}
         run: |
@@ -61,9 +80,21 @@ jobs:
           else
             COMMIT_MESSAGE="🔄 Update WordPress core metadata"
           fi
-          git add packages.json
-          git diff --cached --quiet || git commit -m "$COMMIT_MESSAGE"
-          git pull --rebase --autostash origin "$GITHUB_REF_NAME" && git push
+          git add packages.json status.json badges
+          if git diff --cached --quiet; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "$COMMIT_MESSAGE"
+            git pull --rebase --autostash origin "$GITHUB_REF_NAME" && git push || exit 1
+            echo "pushed=true" >> "$GITHUB_OUTPUT"
+            echo "Committed at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Attest packages.json
+        if: ${{ steps.push.outputs.pushed == 'true' }}
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: packages.json
 
       - name: Fail if the run was incomplete
         if: ${{ (steps.generate.outputs.incomplete || '0') != '0' }}
@@ -72,3 +103,48 @@ jobs:
         run: |
           echo "::error::$INCOMPLETE version(s) deferred; see the generator log"
           exit 1
+
+      # if: failure() also fires for the deliberate "incomplete run" failure above -
+      # that is intended: a deferred version should be visible.
+      - name: Open or comment an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "WordPress release watch failed"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          number=$(gh issue list --state open --search "$TITLE in:title" --json number,title \
+            --jq ".[] | select(.title == \"$TITLE\") | .number" | head -n1)
+          body="The update job failed. Run: $RUN_URL"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi
+
+  publish:
+    name: Publish tags for Packagist
+    needs: update
+    if: ${{ needs.update.outputs.has_token == 'true' && needs.update.outputs.pushed == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # contents: read only - this job writes to OTHER repositories via PUBLISH_TOKEN, never to this
+    # one. It never touches packages.json and therefore cannot affect the Pages output. It is
+    # deliberately NOT in the wp-core-repo-write concurrency group for the same reason: it does not
+    # write this repository, so it cannot race with the `update` job's commit/push.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+
+      - name: Publish new version tags
+        env:
+          PUBLISH_REPO_WORDPRESS_CORE: ${{ vars.PUBLISH_REPO_WORDPRESS_CORE }}
+          PUBLISH_REPO_WORDPRESS_CORE_NO_CONTENT: ${{ vars.PUBLISH_REPO_WORDPRESS_CORE_NO_CONTENT }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: node publish-packages.js

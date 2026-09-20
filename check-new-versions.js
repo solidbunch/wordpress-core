@@ -2,40 +2,29 @@
 
 const fs = require('fs');
 
+const { VARIANTS, ANY_VERSION_RE, SHASUM_RE, probeBase, betaChannelUrl } = require('./lib/constants');
+const { isObject } = require('./lib/util');
+const { httpGet, withRetries } = require('./lib/http');
+
 // Test seams: the workflow never sets these
 const PACKAGES_FILE = process.env.PACKAGES_FILE || 'packages.json';
 const VERSION_CHECK_URL = process.env.VERSION_CHECK_URL || 'https://api.wordpress.org/core/version-check/1.7/';
-const DOWNLOAD_BASE = 'https://downloads.wordpress.org/release/';
 
-const VERSION_RE = /^\d+\.\d+(\.\d+)?$/;
-const SHASUM_RE = /^[0-9a-f]{40}$/;
-
-const REQUEST_TIMEOUT_MS = 15000;
 const BACKOFF_MS = [2000, 6000];
 
-const VARIANTS = [
-  { name: 'solidbunch/wordpress-core-no-content', suffix: '-no-content' },
-  { name: 'solidbunch/wordpress-core', suffix: '' }
-];
-
-const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+// Keeps this gate's original, shorter failure-reason formula (no err.cause?.message fallback)
+// byte-identical to HEAD; see lib/http.js's defaultDescribeError for the generator's formula.
+const describeError = (err) => err.cause?.code || err.message;
 
 // judge(status, body) returns a verdict object, or { retry: reason } for a transient failure
 async function get(url, judge) {
-  let reason;
-  for (let attempt = 0; attempt <= BACKOFF_MS.length; attempt++) {
-    if (attempt > 0) await sleep(BACKOFF_MS[attempt - 1]);
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-      const verdict = judge(res.status, await res.text());
-      if (verdict.retry === undefined) return verdict;
-      reason = verdict.retry;
-    } catch (err) {
-      reason = err.cause?.code || err.message;
-    }
-  }
-  throw new Error(`cannot fetch ${url}: ${reason} (after ${BACKOFF_MS.length + 1} attempts)`);
+  const outcome = await withRetries(async () => {
+    const res = await httpGet(url, { describeError });
+    if (res.error) return { retry: res.error };
+    return judge(res.status, res.body);
+  }, { retries: BACKOFF_MS.length, delayFor: (i) => BACKOFF_MS[i - 1] });
+  if (outcome.failure) throw new Error(`cannot fetch ${url}: ${outcome.failure} (after ${BACKOFF_MS.length + 1} attempts)`);
+  return outcome;
 }
 
 function readPackages() {
@@ -55,6 +44,30 @@ function readPackages() {
   return parsed.packages;
 }
 
+// Never throws: the beta channel is advisory only (plan Design decision 7). Any failure - network,
+// non-200, unparseable body, missing "offers" array - logs BETA-CHANNEL-UNAVAILABLE and yields no offers.
+async function fetchBetaOffers() {
+  const url = betaChannelUrl(VERSION_CHECK_URL);
+  try {
+    const { body } = await get(url, (status, text) => (status === 200 ? { body: text } : { retry: `HTTP ${status}` }));
+    let offers;
+    try {
+      offers = JSON.parse(body).offers;
+    } catch (err) {
+      console.log(`BETA-CHANNEL-UNAVAILABLE: cannot parse response of ${url}: ${err.name}`);
+      return [];
+    }
+    if (!Array.isArray(offers)) {
+      console.log(`BETA-CHANNEL-UNAVAILABLE: ${url} returned no "offers" array`);
+      return [];
+    }
+    return offers;
+  } catch (err) {
+    console.log(`BETA-CHANNEL-UNAVAILABLE: ${err.message}`);
+    return [];
+  }
+}
+
 async function fetchOfferedVersions() {
   const { body } = await get(VERSION_CHECK_URL, (status, text) => (status === 200 ? { body: text } : { retry: `HTTP ${status}` }));
   let offers;
@@ -64,10 +77,11 @@ async function fetchOfferedVersions() {
     throw new Error(`cannot parse response of ${VERSION_CHECK_URL}: ${err.name}`);
   }
   if (!Array.isArray(offers)) throw new Error(`${VERSION_CHECK_URL} returned no "offers" array`);
+  const betaOffers = await fetchBetaOffers();
   const versions = new Set();
-  for (const offer of offers) {
+  for (const offer of [...offers, ...betaOffers]) {
     const version = offer?.version;
-    if (typeof version === 'string' && VERSION_RE.test(version)) versions.add(version);
+    if (typeof version === 'string' && ANY_VERSION_RE.test(version)) versions.add(version);
     else console.log(`IGNORED-VERSION: ${JSON.stringify(version)} (from offers)`);
   }
   if (versions.size === 0) throw new Error(`${VERSION_CHECK_URL} offers no usable version`);
@@ -99,14 +113,18 @@ async function main() {
   if (missing.length === 0) return finish(false, `All ${offered.size} offered version(s) are in ${PACKAGES_FILE}`);
 
   for (const { variant, version } of missing) {
-    const url = `${DOWNLOAD_BASE}wordpress-${version}${variant.suffix}.zip.sha1`;
+    const url = `${probeBase()}wordpress-${version}${variant.suffix}.zip.sha1`;
     if ((await get(url, judgeProbe)).exists) return finish(true, `${variant.name} ${version} is offered, missing and its archive exists`);
     console.log(`SKIPPED-NO-ARCHIVE: ${variant.name} ${version}: ${url} returned 404`);
   }
   return finish(false, `${missing.length} offered package version(s) have no archive yet`);
 }
 
-main().catch((err) => {
-  console.error(`FATAL: ${err.message}`);
-  process.exitCode = 1;
-});
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(`FATAL: ${err.message}`);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { main, readPackages, fetchOfferedVersions, fetchBetaOffers, judgeProbe };

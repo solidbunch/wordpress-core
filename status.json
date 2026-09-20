@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "packages": {
+    "solidbunch/wordpress-core-no-content": {
+      "latest": "7.1.1",
+      "latestStable": "7.1.1",
+      "count": 671
+    },
+    "solidbunch/wordpress-core": {
+      "latest": "7.1.1",
+      "latestStable": "7.1.1",
+      "count": 671
+    }
+  },
+  "wordpress": {
+    "latestStable": "7.1.1",
+    "latestPrerelease": null
+  },
+  "pickup": null
+}
