@@ -197,6 +197,16 @@ The `type:wordpress-core` rule is **required**, not optional. Composer's install
 
 **Unverified**: which package names WordPress core's existing published security advisories are filed under (`composer audit` cross-references named packages) has not been confirmed. As a result, `composer audit` does not inherit any advisory history under `solidbunch/wordpress-core` or `solidbunch/wordpress-core-no-content` — migrating does not carry over any advisory coverage that may exist for `johnpbloch/*` or other package names.
 
+### Comparison with johnpbloch/wordpress-core
+
+|                       | `solidbunch/wordpress-core`                                                                                        | `johnpbloch/wordpress-core`         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `dist` source          | `downloads.wordpress.org` release archive                                                                             | GitHub zipball                       |
+| `dist.shasum`          | SHA-1 from the published `.sha1`, verified locally against the downloaded archive on first add, and re-checked weekly | empty (no checksum verification)     |
+| No-content variant     | yes                                                                                                                    | no                                    |
+| Pre-release versions   | yes, when wordpress.org publishes the archive                                                                         | no                                    |
+| Old versions           | every stable release from 4.1 onwards, never removed                                                                  | —                                     |
+
 ---
 
 ## ⚙ Automatic generation
