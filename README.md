@@ -58,6 +58,30 @@ Every stable WordPress release from the 4.1 branch onwards is kept and is never 
 
 Branch releases are named exactly as WordPress names them (e.g. `7.1`, `6.9`, `4.1`). Composer treats these as `7.1.0`, `6.9.0` and `4.1.0`.
 
+#### Installing pre-releases
+
+Pre-release versions (`X.Y-betaN`, `X.Y-RCN`, `X.Y.Z-RCN`) appear in `packages.json` only while WordPress is in a beta/RC window for that release. Once the window closes they are **not** removed — they stay available for anyone who already depends on them.
+
+Composer's default `minimum-stability` is `stable`, which will not install these versions. To install one, either:
+
+- Lower the project's minimum stability and keep preferring stable releases otherwise:
+  ```json
+  {
+    "minimum-stability": "beta",
+    "prefer-stable": true
+  }
+  ```
+- Or require the specific pre-release with an explicit stability flag:
+  ```json
+  {
+    "require": {
+      "solidbunch/wordpress-core": "7.2.*@RC"
+    }
+  }
+  ```
+
+**Unverified**: wordpress.org may publish only the full release archive for a pre-release, and not a matching `-no-content` archive. If that happens, `solidbunch/wordpress-core-no-content` simply has no entry for that version — whether this asymmetry actually occurs for beta/RC releases has not been confirmed.
+
 ---
 
 ## 📆 About the Packages
