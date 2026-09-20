@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 
-const { VARIANTS, VERSION_RE, SHASUM_RE, probeBase } = require('./lib/constants');
+const { VARIANTS, ANY_VERSION_RE, SHASUM_RE, probeBase, betaChannelUrl } = require('./lib/constants');
 const { isObject } = require('./lib/util');
 const { httpGet, withRetries } = require('./lib/http');
 
@@ -44,6 +44,30 @@ function readPackages() {
   return parsed.packages;
 }
 
+// Never throws: the beta channel is advisory only (plan Design decision 7). Any failure - network,
+// non-200, unparseable body, missing "offers" array - logs BETA-CHANNEL-UNAVAILABLE and yields no offers.
+async function fetchBetaOffers() {
+  const url = betaChannelUrl(VERSION_CHECK_URL);
+  try {
+    const { body } = await get(url, (status, text) => (status === 200 ? { body: text } : { retry: `HTTP ${status}` }));
+    let offers;
+    try {
+      offers = JSON.parse(body).offers;
+    } catch (err) {
+      console.log(`BETA-CHANNEL-UNAVAILABLE: cannot parse response of ${url}: ${err.name}`);
+      return [];
+    }
+    if (!Array.isArray(offers)) {
+      console.log(`BETA-CHANNEL-UNAVAILABLE: ${url} returned no "offers" array`);
+      return [];
+    }
+    return offers;
+  } catch (err) {
+    console.log(`BETA-CHANNEL-UNAVAILABLE: ${err.message}`);
+    return [];
+  }
+}
+
 async function fetchOfferedVersions() {
   const { body } = await get(VERSION_CHECK_URL, (status, text) => (status === 200 ? { body: text } : { retry: `HTTP ${status}` }));
   let offers;
@@ -53,10 +77,11 @@ async function fetchOfferedVersions() {
     throw new Error(`cannot parse response of ${VERSION_CHECK_URL}: ${err.name}`);
   }
   if (!Array.isArray(offers)) throw new Error(`${VERSION_CHECK_URL} returned no "offers" array`);
+  const betaOffers = await fetchBetaOffers();
   const versions = new Set();
-  for (const offer of offers) {
+  for (const offer of [...offers, ...betaOffers]) {
     const version = offer?.version;
-    if (typeof version === 'string' && VERSION_RE.test(version)) versions.add(version);
+    if (typeof version === 'string' && ANY_VERSION_RE.test(version)) versions.add(version);
     else console.log(`IGNORED-VERSION: ${JSON.stringify(version)} (from offers)`);
   }
   if (versions.size === 0) throw new Error(`${VERSION_CHECK_URL} offers no usable version`);
@@ -102,4 +127,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { main, readPackages, fetchOfferedVersions, judgeProbe };
+module.exports = { main, readPackages, fetchOfferedVersions, fetchBetaOffers, judgeProbe };

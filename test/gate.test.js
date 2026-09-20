@@ -219,3 +219,157 @@ test('the version-check route failing on every attempt is fatal', { timeout: 300
     }
   });
 });
+
+// betaChannelUrl() derives the beta URL from the same base with ?channel=beta appended, so a single
+// route dispatches on the query param the same way the stable/beta requests differ in the client.
+function versionCheckRoute({ stable, beta }) {
+  return (req, res, url) => {
+    const handler = url.searchParams.get('channel') === 'beta' ? beta : stable;
+    handler(req, res, url);
+  };
+}
+
+function jsonRoute(status, body) {
+  return (req, res) => {
+    res.writeHead(status, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(body));
+  };
+}
+
+function textRoute(status, body) {
+  return (req, res) => {
+    res.writeHead(status);
+    res.end(body);
+  };
+}
+
+test('beta channel offers a version not offered by stable -> merged, run=true', { timeout: 30000 }, async () => {
+  await withTempDir(async (dir) => {
+    const shasum = '0'.repeat(40);
+    const { url, close } = await startServer({
+      '/version-check': versionCheckRoute({
+        stable: jsonRoute(200, { offers: [{ version: '6.9' }] }),
+        beta: jsonRoute(200, { offers: [{ version: '7.0-RC1' }] })
+      }),
+      '/release/wordpress-6.9.zip.sha1': textRoute(404, 'not found'),
+      '/release/wordpress-6.9-no-content.zip.sha1': textRoute(404, 'not found'),
+      '/release/wordpress-7.0-RC1.zip.sha1': (req, res) => {
+        res.writeHead(200);
+        res.end(shasum);
+      },
+      '/release/wordpress-7.0-RC1-no-content.zip.sha1': (req, res) => {
+        res.writeHead(200);
+        res.end(shasum);
+      }
+    });
+    try {
+      const packagesFile = writePackages(dir, {
+        'solidbunch/wordpress-core-no-content': { '6.9': {} },
+        'solidbunch/wordpress-core': { '6.9': {} }
+      });
+      const outputFile = path.join(dir, 'github-output');
+      const result = await runGate({
+        ...process.env,
+        PACKAGES_FILE: packagesFile,
+        VERSION_CHECK_URL: `${url}/version-check`,
+        DOWNLOAD_BASE_OVERRIDE: `${url}/release/`,
+        GITHUB_OUTPUT: outputFile
+      });
+      assert.equal(result.exitCode, 0);
+      assert.match(result.stdout, /7\.0-RC1 is offered, missing and its archive exists/);
+      assert.equal(readOutput(outputFile), 'run=true\n');
+    } finally {
+      await close();
+    }
+  });
+});
+
+test('beta channel 500 -> BETA-CHANNEL-UNAVAILABLE logged, stable offers still used', { timeout: 30000 }, async () => {
+  await withTempDir(async (dir) => {
+    const { url, close } = await startServer({
+      '/version-check': versionCheckRoute({
+        stable: jsonRoute(200, { offers: [{ version: '6.9' }] }),
+        beta: textRoute(500, 'boom')
+      })
+    });
+    try {
+      const packagesFile = writePackages(dir, {
+        'solidbunch/wordpress-core-no-content': { '6.9': {} },
+        'solidbunch/wordpress-core': { '6.9': {} }
+      });
+      const outputFile = path.join(dir, 'github-output');
+      const result = await runGate({
+        ...process.env,
+        PACKAGES_FILE: packagesFile,
+        VERSION_CHECK_URL: `${url}/version-check`,
+        GITHUB_OUTPUT: outputFile
+      });
+      assert.equal(result.exitCode, 0);
+      assert.match(result.stdout, new RegExp(`BETA-CHANNEL-UNAVAILABLE: cannot fetch ${url}/version-check\\?channel=beta: HTTP 500`));
+      assert.match(result.stdout, /All 1 offered version\(s\) are in/);
+      assert.equal(readOutput(outputFile), 'run=false\n');
+    } finally {
+      await close();
+    }
+  });
+});
+
+test('beta channel returns an unparseable body -> BETA-CHANNEL-UNAVAILABLE logged, stable offers still used', { timeout: 30000 }, async () => {
+  await withTempDir(async (dir) => {
+    const { url, close } = await startServer({
+      '/version-check': versionCheckRoute({
+        stable: jsonRoute(200, { offers: [{ version: '6.9' }] }),
+        beta: textRoute(200, 'not json')
+      })
+    });
+    try {
+      const packagesFile = writePackages(dir, {
+        'solidbunch/wordpress-core-no-content': { '6.9': {} },
+        'solidbunch/wordpress-core': { '6.9': {} }
+      });
+      const outputFile = path.join(dir, 'github-output');
+      const result = await runGate({
+        ...process.env,
+        PACKAGES_FILE: packagesFile,
+        VERSION_CHECK_URL: `${url}/version-check`,
+        GITHUB_OUTPUT: outputFile
+      });
+      assert.equal(result.exitCode, 0);
+      assert.match(result.stdout, new RegExp(`BETA-CHANNEL-UNAVAILABLE: cannot parse response of ${url}/version-check\\?channel=beta`));
+      assert.match(result.stdout, /All 1 offered version\(s\) are in/);
+      assert.equal(readOutput(outputFile), 'run=false\n');
+    } finally {
+      await close();
+    }
+  });
+});
+
+test('beta channel returns {"offers":"nonsense"} -> BETA-CHANNEL-UNAVAILABLE logged, stable offers still used', { timeout: 30000 }, async () => {
+  await withTempDir(async (dir) => {
+    const { url, close } = await startServer({
+      '/version-check': versionCheckRoute({
+        stable: jsonRoute(200, { offers: [{ version: '6.9' }] }),
+        beta: jsonRoute(200, { offers: 'nonsense' })
+      })
+    });
+    try {
+      const packagesFile = writePackages(dir, {
+        'solidbunch/wordpress-core-no-content': { '6.9': {} },
+        'solidbunch/wordpress-core': { '6.9': {} }
+      });
+      const outputFile = path.join(dir, 'github-output');
+      const result = await runGate({
+        ...process.env,
+        PACKAGES_FILE: packagesFile,
+        VERSION_CHECK_URL: `${url}/version-check`,
+        GITHUB_OUTPUT: outputFile
+      });
+      assert.equal(result.exitCode, 0);
+      assert.match(result.stdout, new RegExp(`BETA-CHANNEL-UNAVAILABLE: ${url}/version-check\\?channel=beta returned no "offers" array`));
+      assert.match(result.stdout, /All 1 offered version\(s\) are in/);
+      assert.equal(readOutput(outputFile), 'run=false\n');
+    } finally {
+      await close();
+    }
+  });
+});

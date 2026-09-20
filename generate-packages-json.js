@@ -4,8 +4,8 @@ const fs = require('fs');
 const { execFileSync } = require('child_process');
 
 const {
-  API_URL,
-  STABLE_CHECK_URL,
+  API_URL: DEFAULT_API_URL,
+  STABLE_CHECK_URL: DEFAULT_STABLE_CHECK_URL,
   VERSION_PHP_URLS,
   LICENSE,
   MIN_VERSION,
@@ -17,7 +17,8 @@ const {
   HOMEPAGE,
   SUPPORT,
   CORE_IMPLEMENTATION,
-  SOURCE_URL
+  SOURCE_URL,
+  betaChannelUrl
 } = require('./lib/constants');
 const { isObject, distUrl, normalizeHost } = require('./lib/util');
 const { compareVersions, findDuplicates } = require('./lib/versions');
@@ -26,6 +27,13 @@ const { sha1, md5, MD5_RE } = require('./lib/checksums');
 const { parsePackages, readPackagesFile } = require('./lib/packages-file');
 
 const PACKAGES_FILE = 'packages.json';
+
+// API_URL_OVERRIDE is a test seam; the workflow never sets it. A function (not a snapshot taken at
+// require time) so tests can point it at a fresh local server per test within the same process,
+// the same reason DOWNLOAD_BASE_OVERRIDE/probeBase() in lib/constants.js is a function too.
+const apiUrl = () => process.env.API_URL_OVERRIDE || DEFAULT_API_URL;
+// STABLE_CHECK_URL_OVERRIDE is a test seam; the workflow never sets it. Same rationale as apiUrl().
+const stableCheckUrl = () => process.env.STABLE_CHECK_URL_OVERRIDE || DEFAULT_STABLE_CHECK_URL;
 
 const API_RETRIES = 2;
 const NEW_ENTRY_RETRIES = 2;
@@ -407,14 +415,52 @@ async function resolveVersion(version, previous, offer) {
   return results;
 }
 
+// Never throws: the beta channel is advisory only (plan Design decision 7). Any failure - network,
+// non-200, unparseable body, missing "offers" array - logs BETA-CHANNEL-UNAVAILABLE and yields no offers.
+async function fetchBetaOffers() {
+  const url = betaChannelUrl(apiUrl());
+  try {
+    const outcome = await withRetries(async () => {
+      const res = await httpGet(url);
+      if (res.error) return { retry: res.error };
+      if (res.status !== 200) return { retry: describeResponse(res) };
+      return { body: res.body };
+    }, { retries: API_RETRIES });
+    if (outcome.failure) {
+      console.log(`BETA-CHANNEL-UNAVAILABLE: cannot fetch ${url}: ${outcome.failure}`);
+      return [];
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(outcome.body);
+    } catch (err) {
+      console.log(`BETA-CHANNEL-UNAVAILABLE: cannot parse response of ${url}: ${err.message}`);
+      return [];
+    }
+    if (!Array.isArray(parsed.offers)) {
+      console.log(`BETA-CHANNEL-UNAVAILABLE: ${url} returned no "offers" array`);
+      return [];
+    }
+    return parsed.offers;
+  } catch (err) {
+    console.log(`BETA-CHANNEL-UNAVAILABLE: ${err.message}`);
+    return [];
+  }
+}
+
+// Merges the stable and beta channels by version; on a key collision the stable channel's offer
+// wins (it is authoritative for a stable version). Prereleases therefore only ever enter through
+// offers, never through fetchStableVersions' enumeration (see plan backlog 3.4).
 async function fetchOffers() {
-  const offers = (await fetchJson(API_URL)).offers;
-  if (!Array.isArray(offers)) throw new Error(`${API_URL} returned no "offers" array`);
+  const url = apiUrl();
+  const stableOffers = (await fetchJson(url)).offers;
+  if (!Array.isArray(stableOffers)) throw new Error(`${url} returned no "offers" array`);
+  const betaOffers = await fetchBetaOffers();
   const byVersion = new Map();
   const ignored = [];
-  for (const offer of offers) {
+  for (const offer of [...stableOffers, ...betaOffers]) {
     const version = offer?.version;
-    if (typeof version !== 'string' || !VERSION_RE.test(version)) {
+    if (typeof version !== 'string' || !ANY_VERSION_RE.test(version)) {
       ignored.push(`IGNORED-VERSION: ${JSON.stringify(version)} (from offers)`);
     } else if (!byVersion.has(version)) {
       byVersion.set(version, offer);
@@ -424,15 +470,16 @@ async function fetchOffers() {
 }
 
 async function fetchStableVersions() {
-  const statuses = await fetchJson(STABLE_CHECK_URL);
-  if (!isObject(statuses) || Object.keys(statuses).length === 0) throw new Error(`${STABLE_CHECK_URL} returned no version object`);
+  const url = stableCheckUrl();
+  const statuses = await fetchJson(url);
+  if (!isObject(statuses) || Object.keys(statuses).length === 0) throw new Error(`${url} returned no version object`);
   const versions = [];
   const ignored = [];
   for (const key of Object.keys(statuses)) {
     if (!VERSION_RE.test(key)) ignored.push(`IGNORED-VERSION: ${JSON.stringify(key)} (from stable-check)`);
     else if (compareVersions(key, MIN_VERSION) >= 0) versions.push(key);
   }
-  if (versions.length === 0) throw new Error(`${STABLE_CHECK_URL} lists no stable version >= ${MIN_VERSION}, refusing to run without enumeration`);
+  if (versions.length === 0) throw new Error(`${url} lists no stable version >= ${MIN_VERSION}, refusing to run without enumeration`);
   return { versions, ignored };
 }
 
@@ -648,6 +695,9 @@ module.exports = {
   resolveExisting,
   resolveNew,
   resolveVersion,
+  fetchOffers,
+  fetchBetaOffers,
+  fetchStableVersions,
   formatSummary,
   writeJobSummary,
   check,
