@@ -47,7 +47,9 @@ async function fetchJson(url) {
   }
 }
 
-// Only a 404 on the .sha1 means "archive does not exist"; every other failure is transient
+// Only a 404 on the .sha1 means "archive does not exist"; every other failure is transient.
+// lastModified (raw header value, or undefined) is the .sha1 response's Last-Modified header; it is
+// only a fallback for the job summary (T5.1) - verifyArchive's archive response is preferred there.
 async function fetchShasum(url, retries) {
   return withRetries(async () => {
     const res = await httpGet(`${url}.sha1`);
@@ -56,7 +58,9 @@ async function fetchShasum(url, retries) {
     if (res.status !== 200) return { retry: describeResponse(res) };
     const shasum = res.body.trim();
     if (!SHASUM_RE.test(shasum)) return { retry: `HTTP 200 but body is not a SHA-1: ${JSON.stringify(shasum.slice(0, 100))}` };
-    return { shasum };
+    const result = { shasum };
+    if (res.headers?.['last-modified'] != null) result.lastModified = res.headers['last-modified'];
+    return result;
   }, { retries });
 }
 
@@ -71,7 +75,7 @@ async function verifyArchive(url, expectedSha1, retries) {
     if (res.status !== 200) {
       return { retry: `HTTP ${res.status}: ${res.buffer.toString('utf8').trim().replace(/\s+/g, ' ').slice(0, 500)}` };
     }
-    return { buffer: res.buffer };
+    return { buffer: res.buffer, headers: res.headers };
   }, { retries });
   if (archiveOutcome.failure) return { failure: archiveOutcome.failure };
 
@@ -89,12 +93,18 @@ async function verifyArchive(url, expectedSha1, retries) {
     return { published };
   }, { retries });
   if (md5Outcome.failure) return { failure: md5Outcome.failure };
-  if (md5Outcome.noMd5) return { ok: true, bytes: archiveOutcome.buffer.length, noMd5: true };
+
+  // Preferred source for the job summary (T5.1): this is the archive's own Last-Modified header,
+  // already downloaded above - not the (weaker) .sha1 response header fetchShasum also carries.
+  const okResult = { ok: true, bytes: archiveOutcome.buffer.length };
+  if (archiveOutcome.headers?.['last-modified'] != null) okResult.lastModified = archiveOutcome.headers['last-modified'];
+
+  if (md5Outcome.noMd5) return { ...okResult, noMd5: true };
 
   const actualMd5 = md5(archiveOutcome.buffer);
   if (actualMd5 !== md5Outcome.published) return { ok: false, mismatch: 'md5', expected: md5Outcome.published, actual: actualMd5 };
 
-  return { ok: true, bytes: archiveOutcome.buffer.length };
+  return okResult;
 }
 
 function readPackages({ required }) {
@@ -374,6 +384,9 @@ async function resolveNew(variant, version, sibling, offer, getVersionPhpMetadat
   }
   const added = { status: 'added', entry: buildEntry(variant, newFields(variant, version, metadata), url, result.shasum) };
   if (verification.noMd5) added.noMd5 = `NO-MD5: ${variant.name} ${version}: ${url}.md5 returned 404`;
+  // Job summary (T5.1): prefer the archive's own Last-Modified, fall back to the .sha1 response's.
+  const lastModified = verification.lastModified ?? result.lastModified;
+  if (lastModified !== undefined) added.lastModified = lastModified;
   return added;
 }
 
@@ -428,6 +441,68 @@ function printReport(packages, added, lists) {
   for (const line of [...lists.skipped, ...lists.noMd5, ...lists.asymmetric, ...lists.deferred, ...lists.ignored]) console.log(line);
 }
 
+// Any text taken from an HTTP header is untrusted: only a parsed Date (rendered as ISO 8601 UTC) or
+// the literal "unknown" ever reaches the summary - never the raw header string.
+function parseHeaderDate(value) {
+  if (typeof value !== 'string' || value === '') return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : new Date(ms);
+}
+
+const toIso = (date) => date.toISOString().replace(/\.\d{3}Z$/, 'Z');
+
+// Largest-two-unit rendering, e.g. "9m 33s", "2h 15m", "3d 4h". Clamped to zero so clock skew never
+// renders a negative lag.
+function formatLag(milliseconds) {
+  const totalSeconds = Math.max(0, Math.round(milliseconds / 1000));
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+// Table cells are our own version/package strings plus derived values, but escape defensively
+// anyway: a literal "|" in a cell would corrupt the Markdown table.
+const escapeCell = (value) => String(value).replace(/\|/g, '\\|');
+
+// Pure Markdown formatter for the "Added versions" job summary (T5.1). rows: [{version, package,
+// lastModified}], lastModified being the raw Last-Modified header value (or undefined) captured by
+// resolveNew - the archive response's header is preferred there, falling back to the .sha1
+// response's. now: a single Date shared by every row in the run. Returns '' for an empty row list.
+function formatSummary(rows, now) {
+  if (!rows.length) return '';
+  const lines = [
+    '## Added versions',
+    '',
+    '| Version | Package | Archive published (Last-Modified) | Observed by the generator | Lag |',
+    '| --- | --- | --- | --- | --- |'
+  ];
+  for (const row of rows) {
+    const published = parseHeaderDate(row.lastModified);
+    const publishedCell = published ? toIso(published) : 'unknown';
+    const observedCell = published ? toIso(now) : 'unknown';
+    const lagCell = published ? formatLag(now.getTime() - published.getTime()) : '—';
+    lines.push(`| ${escapeCell(row.version)} | ${escapeCell(row.package)} | ${publishedCell} | ${observedCell} | ${lagCell} |`);
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+// Never allowed to fail the run: writing the job summary is best-effort. Skipped entirely (no I/O
+// attempted at all) when GITHUB_STEP_SUMMARY is unset, so tests never need a writable path for that case.
+function writeJobSummary(rows) {
+  if (!process.env.GITHUB_STEP_SUMMARY) return;
+  try {
+    const markdown = formatSummary(rows, new Date());
+    if (markdown) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${markdown}\n`);
+  } catch (err) {
+    console.warn(`SUMMARY-FAILED: ${err.message}`);
+  }
+}
+
 async function generate() {
   const previous = readPackages({ required: false });
   const existingVersions = new Set();
@@ -455,12 +530,16 @@ async function generate() {
   const added = [];
   const lists = { skipped: [], deferred: [], ignored, asymmetric: [], noMd5: [] };
   const deferredVersions = new Set();
+  const summaryRows = [];
   for (const variant of VARIANTS) packages[variant.name] = {};
   sorted.forEach((version, index) => {
     VARIANTS.forEach((variant, variantIndex) => {
       const result = resolved[index][variantIndex];
       if (result.entry) packages[variant.name][version] = result.entry;
-      if (result.status === 'added' && !added.includes(version)) added.push(version);
+      if (result.status === 'added') {
+        if (!added.includes(version)) added.push(version);
+        summaryRows.push({ version, package: variant.name, lastModified: result.lastModified });
+      }
       if (result.status === 'skipped') lists.skipped.push(`SKIPPED-NO-ARCHIVE: ${result.reason}`);
       if (result.noMd5) lists.noMd5.push(result.noMd5);
       if (result.status === 'deferred') {
@@ -478,6 +557,7 @@ async function generate() {
 
   printReport(packages, added, lists);
   if (deferredVersions.size) console.log(`INCOMPLETE: ${deferredVersions.size} version(s) deferred`);
+  writeJobSummary(summaryRows);
   if (process.env.GITHUB_OUTPUT) {
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `commit_version=${added[0] || ''}\nincomplete=${deferredVersions.size}\n`);
   }
@@ -567,6 +647,8 @@ module.exports = {
   resolveExisting,
   resolveNew,
   resolveVersion,
+  formatSummary,
+  writeJobSummary,
   check,
   generate,
   backfill

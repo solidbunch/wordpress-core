@@ -74,6 +74,7 @@ jobs:
             git commit -m "$COMMIT_MESSAGE"
             git pull --rebase --autostash origin "$GITHUB_REF_NAME" && git push || exit 1
             echo "pushed=true" >> "$GITHUB_OUTPUT"
+            echo "Committed at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Attest packages.json
