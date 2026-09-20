@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests and packages.json check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # check() calls `git show HEAD:./packages.json`, which needs at least the current
+          # commit's blob; HEAD is present even with the default shallow checkout, so depth 2
+          # is a cheap safety margin rather than a strict requirement.
+          fetch-depth: 2
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+      - run: node --test
+      - run: node generate-packages-json.js --check
