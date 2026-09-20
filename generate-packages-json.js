@@ -21,7 +21,7 @@ const {
   betaChannelUrl
 } = require('./lib/constants');
 const { isObject, distUrl, normalizeHost } = require('./lib/util');
-const { compareVersions, findDuplicates } = require('./lib/versions');
+const { compareVersions, findDuplicates, isPrerelease } = require('./lib/versions');
 const { httpGet, httpGetBuffer, describeResponse, withRetries } = require('./lib/http');
 const { sha1, md5, MD5_RE } = require('./lib/checksums');
 const { parsePackages, readPackagesFile } = require('./lib/packages-file');
@@ -259,7 +259,15 @@ function asymmetricLines(packages) {
   for (const variant of VARIANTS) {
     const other = VARIANTS.find((candidate) => candidate !== variant);
     for (const key of Object.keys(packages[variant.name] || {})) {
-      if (!Object.hasOwn(packages[other.name] || {}, key)) lines.push(`ASYMMETRIC: ${key} exists only in ${variant.name}`);
+      if (Object.hasOwn(packages[other.name] || {}, key)) continue;
+      // A prerelease missing the sibling archive is expected (wordpress.org may simply not
+      // publish it), so it gets a distinct, more specific label than a stable-version asymmetry -
+      // both remain informational, never a validation violation (plan backlog 3.3).
+      lines.push(
+        isPrerelease(key)
+          ? `ASYMMETRIC-PRERELEASE: ${key} exists only in ${variant.name} (expected: wordpress.org may not publish a ${other.suffix} archive for pre-releases)`
+          : `ASYMMETRIC: ${key} exists only in ${variant.name}`
+      );
     }
   }
   return lines;
@@ -373,7 +381,7 @@ async function fetchVersionPhpMetadata(version) {
 async function resolveNew(variant, version, sibling, offer, getVersionPhpMetadata) {
   const url = distUrl(variant, version);
   const result = await fetchShasum(url, NEW_ENTRY_RETRIES);
-  if (result.missing) return { status: 'skipped', reason: `${variant.name} ${version}: ${url}.sha1 returned 404` };
+  if (result.missing) return { status: 'skipped', code: 'no-archive', reason: `${variant.name} ${version}: ${url}.sha1 returned 404` };
   if (result.failure) return { status: 'deferred', reason: `${variant.name} ${version}: ${result.failure}` };
 
   const verification = await verifyArchive(url, result.shasum, NEW_ENTRY_RETRIES);
@@ -388,7 +396,24 @@ async function resolveNew(variant, version, sibling, offer, getVersionPhpMetadat
   let metadata = sibling ? metadataFromSibling(sibling) : metadataFromOffer(offer);
   if (!metadata) {
     const fetched = await getVersionPhpMetadata();
-    if (fetched.failure) return { status: 'deferred', reason: `${variant.name} ${version}: ${fetched.failure}` };
+    if (fetched.failure) {
+      // A stable version's version.php is expected to exist (WordPress always tags one for a
+      // stable release), so a stuck "deferred" here is meaningful signal and the workflow should
+      // stay red until it resolves - unchanged from before this branch existed.
+      //
+      // A pre-release may genuinely never get an svn/GitHub tag (wordpress.org sometimes builds a
+      // beta/RC without one), in which case "deferred" would keep the workflow red on every run
+      // forever with nothing anyone can fix. Skip it instead - see plan backlog 3.3 / Design
+      // decision 7.
+      if (isPrerelease(version)) {
+        return {
+          status: 'skipped',
+          code: 'no-metadata',
+          reason: `${variant.name} ${version}: SKIPPED-NO-METADATA, pre-release has no metadata source (${fetched.failure})`
+        };
+      }
+      return { status: 'deferred', reason: `${variant.name} ${version}: ${fetched.failure}` };
+    }
     metadata = fetched.metadata;
   }
   const added = { status: 'added', entry: buildEntry(variant, newFields(variant, version, metadata), url, result.shasum) };
@@ -408,7 +433,13 @@ async function resolveVersion(version, previous, offer) {
     const other = VARIANTS.find((candidate) => candidate !== variant);
     return resolveNew(variant, version, previous[other.name]?.[version], offer, getVersionPhpMetadata);
   }));
-  // A transient failure on one new variant defers the whole version so it is never half published
+  // A transient failure on one new variant defers the whole version so it is never half published.
+  // This pairing keys only on 'deferred', never on 'skipped' (a 404 on one variant's .sha1) - true
+  // for both stable and prerelease versions, and unchanged by plan backlog 3.3: a missing archive
+  // for one variant of a pre-release must never block the other variant from being added, while a
+  // flaky network (deferred) must still half-publish neither. See asymmetricLines/resolveNew for
+  // the prerelease-specific SKIPPED-NO-ARCHIVE / SKIPPED-NO-METADATA / ASYMMETRIC-PRERELEASE
+  // labelling that makes this distinction visible in the report.
   if (results.some((result) => result.status === 'deferred')) {
     return results.map((result) => (result.status === 'added' ? { status: 'deferred', reason: `${result.entry.name} ${version}: paired with a deferred variant` } : result));
   }
@@ -588,7 +619,10 @@ async function generate() {
         if (!added.includes(version)) added.push(version);
         summaryRows.push({ version, package: variant.name, lastModified: result.lastModified });
       }
-      if (result.status === 'skipped') lists.skipped.push(`SKIPPED-NO-ARCHIVE: ${result.reason}`);
+      // 'skipped' covers two distinct causes with their own label: a missing archive (the
+      // reason is bare, prefixed here) and, for a pre-release only, no obtainable version.php
+      // metadata (resolveNew already embeds SKIPPED-NO-METADATA in the reason - plan backlog 3.3).
+      if (result.status === 'skipped') lists.skipped.push(result.code === 'no-metadata' ? result.reason : `SKIPPED-NO-ARCHIVE: ${result.reason}`);
       if (result.noMd5) lists.noMd5.push(result.noMd5);
       if (result.status === 'deferred') {
         lists.deferred.push(`DEFERRED: ${result.reason}`);
