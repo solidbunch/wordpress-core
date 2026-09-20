@@ -37,6 +37,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write
+      issues: write
     concurrency:
       group: wp-core-repo-write
       cancel-in-progress: false
@@ -74,3 +75,21 @@ jobs:
         run: |
           echo "::error::$INCOMPLETE version(s) deferred; see the generator log"
           exit 1
+
+      # if: failure() also fires for the deliberate "incomplete run" failure above -
+      # that is intended: a deferred version should be visible.
+      - name: Open or comment an issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "WordPress release watch failed"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          number=$(gh issue list --state open --search "$TITLE in:title" --json number,title \
+            --jq ".[] | select(.title == \"$TITLE\") | .number" | head -n1)
+          body="The update job failed. Run: $RUN_URL"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$TITLE" --body "$body"
+          fi
