@@ -80,7 +80,7 @@ jobs:
           else
             COMMIT_MESSAGE="🔄 Update WordPress core metadata"
           fi
-          git add packages.json
+          git add packages.json status.json badges
           if git diff --cached --quiet; then
             echo "pushed=false" >> "$GITHUB_OUTPUT"
           else

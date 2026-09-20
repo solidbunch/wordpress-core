@@ -24,3 +24,10 @@ jobs:
           node-version: "22"
       - run: node --test
       - run: node generate-packages-json.js --check
+
+      # status.json/badges are a deterministic projection of packages.json, so a drift here means
+      # the committed artifacts were not regenerated - fail loudly rather than serve stale badges.
+      - name: Check the status artifacts are in sync
+        run: |
+          node generate-packages-json.js --status
+          git diff --exit-code status.json badges
