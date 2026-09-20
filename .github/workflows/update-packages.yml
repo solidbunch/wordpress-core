@@ -44,12 +44,25 @@ jobs:
       group: wp-core-repo-write
       cancel-in-progress: false
 
+    outputs:
+      has_token: ${{ steps.token.outputs.present }}
+      pushed: ${{ steps.push.outputs.pushed }}
+
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "22"
+
+      # Job-level `if:` cannot read `secrets.*` directly, so whether PUBLISH_TOKEN is configured is
+      # exposed as a job output here for the `publish` job's `if:` to consume.
+      - name: Detect the publishing token
+        id: token
+        env:
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: |
+          if [ -n "$PUBLISH_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
 
       - name: Generate packages.json
         id: generate
@@ -108,3 +121,30 @@ jobs:
           else
             gh issue create --title "$TITLE" --body "$body"
           fi
+
+  publish:
+    name: Publish tags for Packagist
+    needs: update
+    if: ${{ needs.update.outputs.has_token == 'true' && needs.update.outputs.pushed == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # contents: read only - this job writes to OTHER repositories via PUBLISH_TOKEN, never to this
+    # one. It never touches packages.json and therefore cannot affect the Pages output. It is
+    # deliberately NOT in the wp-core-repo-write concurrency group for the same reason: it does not
+    # write this repository, so it cannot race with the `update` job's commit/push.
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "22"
+
+      - name: Publish new version tags
+        env:
+          PUBLISH_REPO_WORDPRESS_CORE: ${{ vars.PUBLISH_REPO_WORDPRESS_CORE }}
+          PUBLISH_REPO_WORDPRESS_CORE_NO_CONTENT: ${{ vars.PUBLISH_REPO_WORDPRESS_CORE_NO_CONTENT }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+        run: node publish-packages.js

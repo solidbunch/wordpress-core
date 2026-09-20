@@ -33,6 +33,7 @@ const { buildTagComposerJson, serializeTagComposerJson } = require('./lib/tag-co
 const PACKAGES_FILE = process.env.PACKAGES_FILE || 'packages.json';
 const PUBLISH_LIMIT = Number(process.env.PUBLISH_LIMIT || 50);
 const DEFAULT_BRANCH = 'main';
+const PUBLISH_TOKEN = process.env.PUBLISH_TOKEN || '';
 
 const [noContentVariant, fullVariant] = VARIANTS;
 
@@ -43,9 +44,66 @@ const REMOTE_ENV_VAR = {
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
+// Matches a plain, unauthenticated GitHub HTTPS remote only (https://github.com/<owner>/<repo>[.git]).
+// An SSH remote, an already-authenticated https://user:token@... URL, a non-GitHub host, or (in tests)
+// a plain filesystem path used as a git remote never matches and is left untouched.
+const GITHUB_HTTPS_RE = /^https:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/;
+
+// SECURITY: the return value's `url` may embed PUBLISH_TOKEN and must never be logged. Only `label`
+// (at most "<owner>/<repo>", never a full URL) is safe to print. Every caller that logs "what remote"
+// must use `label`, never `remote` or `url`.
+function resolveRemote(remote) {
+  const match = GITHUB_HTTPS_RE.exec(remote);
+  if (!match) return { url: remote, label: undefined };
+  const [, owner, repo] = match;
+  const label = `${owner}/${repo}`;
+  if (!PUBLISH_TOKEN) return { url: remote, label };
+  return { url: `https://x-access-token:${PUBLISH_TOKEN}@github.com/${owner}/${repo}.git`, label };
+}
+
+// Strips PUBLISH_TOKEN (and, defensively, any x-access-token credential shape) out of an error
+// message before it is ever logged. execFileSync's own error message includes the full command line
+// it ran, and git's own stderr on a failed clone/fetch/push echoes the remote URL back - both are
+// therefore sanitized here regardless of whether PUBLISH_TOKEN happens to appear literally.
+function sanitizeGitError(message) {
+  let sanitized = message;
+  if (PUBLISH_TOKEN) sanitized = sanitized.split(PUBLISH_TOKEN).join('***');
+  sanitized = sanitized.replace(/x-access-token:[^@]*@/g, 'x-access-token:***@');
+  return sanitized;
+}
+
+// execFileSync wrapper for every git invocation that may touch an authenticated remote URL.
+//
+// SECURITY: `stdio` is always forced to ['ignore', 'pipe', 'pipe'], overriding any caller-supplied
+// value, never merged with it. Node's execFileSync defaults `inheritStderr` to `!options.stdio`,
+// meaning that without an explicit `stdio` option it writes git's raw, unsanitized stderr straight
+// to this process's own real stderr - e.g. the CI log - *inside* execFileSync itself, before this
+// try/catch even runs. Forcing `stdio: 'pipe'` is the only way to stop that: it makes execFileSync
+// capture stderr into `err.stderr` instead of inheriting it, so nothing reaches the real stderr
+// unless this wrapper's caller explicitly logs it - and any caller that does so is required to pass
+// it through `sanitizeGitError` first (see call sites below; none currently print raw stdout/stderr).
+//
+// On failure, `err.message` (which execFileSync builds from the command line and stderr) is
+// sanitized before it propagates, and `err.stderr`/`err.stdout` (Buffers or strings, depending on
+// `opts.encoding`) are also sanitized in place so any caller that inspects them later never sees a
+// raw token either.
+function git(args, opts) {
+  const finalOpts = { ...opts, stdio: ['ignore', 'pipe', 'pipe'] };
+  try {
+    return execFileSync('git', args, finalOpts);
+  } catch (err) {
+    err.message = sanitizeGitError(err.message);
+    if (typeof err.stderr === 'string') err.stderr = sanitizeGitError(err.stderr);
+    else if (Buffer.isBuffer(err.stderr)) err.stderr = Buffer.from(sanitizeGitError(err.stderr.toString('utf8')));
+    if (typeof err.stdout === 'string') err.stdout = sanitizeGitError(err.stdout);
+    else if (Buffer.isBuffer(err.stdout)) err.stdout = Buffer.from(sanitizeGitError(err.stdout.toString('utf8')));
+    throw err;
+  }
+}
+
 // The short name of every branch the remote already has, in `git ls-remote --heads` order.
 function remoteHeads(remote) {
-  const output = execFileSync('git', ['ls-remote', '--heads', remote], { encoding: 'utf8' }).trim();
+  const output = git(['ls-remote', '--heads', remote], { encoding: 'utf8' }).trim();
   if (!output) return [];
   return output
     .split('\n')
@@ -56,7 +114,7 @@ function remoteHeads(remote) {
 // The set of tag names the remote already has (lightweight tags only are ever created here, so the
 // `^{}` dereferenced-annotated-tag suffix is stripped defensively rather than expected).
 function remoteTags(remote) {
-  const output = execFileSync('git', ['ls-remote', '--tags', remote], { encoding: 'utf8' }).trim();
+  const output = git(['ls-remote', '--tags', remote], { encoding: 'utf8' }).trim();
   if (!output) return new Set();
   const tags = output
     .split('\n')
@@ -67,7 +125,7 @@ function remoteTags(remote) {
 }
 
 // Clones (or, for a genuinely empty repository, initializes) the variant's working directory and
-// returns the branch name in use.
+// returns the branch name in use. `remote` here is already the resolved (possibly authenticated) URL.
 function prepareWorkingDir(remote, dir) {
   // The variant subdirectory may be left over from an earlier run against the same PUBLISH_WORK_DIR
   // (an explicit env override is a plain working directory, not guaranteed fresh per run). Every run
@@ -75,31 +133,32 @@ function prepareWorkingDir(remote, dir) {
   fs.rmSync(dir, { recursive: true, force: true });
   const heads = remoteHeads(remote);
   if (heads.length === 0) {
-    execFileSync('git', ['init', '--quiet', `--initial-branch=${DEFAULT_BRANCH}`, dir]);
-    execFileSync('git', ['remote', 'add', 'origin', remote], { cwd: dir });
+    git(['init', '--quiet', `--initial-branch=${DEFAULT_BRANCH}`, dir]);
+    git(['remote', 'add', 'origin', remote], { cwd: dir });
     // The remote has no refs at all yet; this fetch is a documented no-op kept for parity with the
     // plan's algorithm (step 1) rather than for any effect.
-    execFileSync('git', ['fetch', '--quiet', 'origin'], { cwd: dir });
+    git(['fetch', '--quiet', 'origin'], { cwd: dir });
     return DEFAULT_BRANCH;
   }
   const branch = heads[0];
-  execFileSync('git', ['clone', '--quiet', '--branch', branch, remote, dir]);
+  git(['clone', '--quiet', '--branch', branch, remote, dir]);
   return branch;
 }
 
 function commitVersion(dir, variant, version, entry) {
   const composerJson = serializeTagComposerJson(buildTagComposerJson(variant, entry));
   fs.writeFileSync(path.join(dir, 'composer.json'), composerJson);
-  execFileSync('git', ['add', 'composer.json'], { cwd: dir });
-  execFileSync(
-    'git',
+  git(['add', 'composer.json'], { cwd: dir });
+  git(
     ['-c', 'user.name=GitHub Actions', '-c', 'user.email=actions@github.com', 'commit', '--quiet', '-m', version],
     { cwd: dir }
   );
-  execFileSync('git', ['tag', version], { cwd: dir });
+  git(['tag', version], { cwd: dir });
 }
 
 // Publishes one variant. Returns nothing; all outcomes are reported via console.log per contract C4.
+// SECURITY: `remote` (the raw env var value) and `gitRemote` (possibly with an embedded token) must
+// never be logged; only `label` (owner/repo, or undefined when unparseable) is safe to print.
 function publishVariant(variant, versions, workDir) {
   const envVar = REMOTE_ENV_VAR[variant.name];
   const remote = process.env[envVar];
@@ -108,9 +167,11 @@ function publishVariant(variant, versions, workDir) {
     return;
   }
 
+  const { url: gitRemote, label } = resolveRemote(remote);
+
   const dir = path.join(workDir, variant.name.split('/')[1]);
-  const branch = prepareWorkingDir(remote, dir);
-  const existingTags = remoteTags(remote);
+  const branch = prepareWorkingDir(gitRemote, dir);
+  const existingTags = remoteTags(gitRemote);
 
   const sortedVersions = Object.keys(versions).sort(compareVersions);
   const pending = sortedVersions.filter((version) => !existingTags.has(version));
@@ -134,12 +195,13 @@ function publishVariant(variant, versions, workDir) {
   if (created === 0) return;
 
   if (DRY_RUN) {
-    console.log(`DRY-RUN: would push ${created} new tag(s) and branch ${branch} to ${remote} for ${variant.name}`);
+    const destination = label ? ` (${label})` : '';
+    console.log(`DRY-RUN: would push ${created} new tag(s) and branch ${branch} for ${variant.name}${destination}`);
     return;
   }
 
-  execFileSync('git', ['push', '--quiet', remote, `HEAD:${branch}`], { cwd: dir });
-  execFileSync('git', ['push', '--quiet', remote, '--tags'], { cwd: dir });
+  git(['push', '--quiet', gitRemote, `HEAD:${branch}`], { cwd: dir });
+  git(['push', '--quiet', gitRemote, '--tags'], { cwd: dir });
 }
 
 function main() {
@@ -167,4 +229,13 @@ if (require.main === module) {
   }
 }
 
-module.exports = { main, publishVariant, prepareWorkingDir, remoteHeads, remoteTags };
+module.exports = {
+  main,
+  publishVariant,
+  prepareWorkingDir,
+  remoteHeads,
+  remoteTags,
+  resolveRemote,
+  sanitizeGitError,
+  runGit: git
+};
