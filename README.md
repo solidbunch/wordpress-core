@@ -4,6 +4,8 @@ A Composer-compatible repository of WordPress core distributions maintained by S
 
 [![CI](https://github.com/solidbunch/wordpress-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/ci.yml)
 [![WordPress release watch](https://github.com/solidbunch/wordpress-core/actions/workflows/update-packages.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/update-packages.yml)
+[![Weekly checksum audit](https://github.com/solidbunch/wordpress-core/actions/workflows/audit-checksums.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/audit-checksums.yml)
+[![Repository Keepalive](https://github.com/solidbunch/wordpress-core/actions/workflows/keepalive.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/keepalive.yml)
 [![solidbunch/wordpress-core version](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress-core.json)](https://solidbunch.github.io/wordpress-core/status.json)
 [![solidbunch/wordpress-core-no-content version](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress-core-no-content.json)](https://solidbunch.github.io/wordpress-core/status.json)
 [![WordPress tracked](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress.json)](https://solidbunch.github.io/wordpress-core/status.json)
@@ -13,6 +15,8 @@ A Composer-compatible repository of WordPress core distributions maintained by S
 |---|---|---|
 | CI | last `ci.yml` run on `main` | GitHub Actions' own badge endpoint |
 | WordPress release watch | last `update-packages.yml` run on `main` | GitHub Actions' own badge endpoint |
+| Weekly checksum audit | last `audit-checksums.yml` run on `main` | GitHub Actions' own badge endpoint |
+| Repository Keepalive | last `keepalive.yml` run on `main` | GitHub Actions' own badge endpoint |
 | the two version badges | highest version present in `packages.json` for that variant | `badges/*.json`, generated from `packages.json` by `generate-packages-json.js --status`; a `(pre-release)` suffix means the newest entry is a beta or RC |
 | WordPress tracked | highest **stable** WordPress release present in `packages.json` | the same artifact; prereleases are deliberately excluded here |
 | Pickup lag | for the most recent version this repo added: the gap between the archive's own `Last-Modified` and the moment the generator observed it | the same measurement the run's job summary prints under `## Added versions`, carried into `status.json`; **a single past measurement, not an average and not a promise** |
