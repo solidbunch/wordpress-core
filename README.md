@@ -23,6 +23,8 @@ A Composer-compatible repository of WordPress core distributions maintained by S
 
 The raw data behind the last four badges is `https://solidbunch.github.io/wordpress-core/status.json`, readable directly if a badge image does not load. Those four badges are rendered by shields.io, a third-party service used without any account or credential; if it is unavailable or rate-limits, the images simply fail to load and nothing in this repository depends on it. Badge values can lag reality by roughly a quarter of an hour: GitHub Pages' CDN serves the artifact with `max-age=600` (see "Automatic generation" below) and shields.io caches an endpoint badge for at least 300 s. The pickup lag is the generator's own observation time; the client-visible delay is longer, as explained in the "Automatic generation" section's latency paragraph.
 
+Run `node validate-badges.js` to check every badge URL in this README against the live services. For each shields.io badge it makes two independent checks — the shields image endpoint and the underlying Pages artifact it reads from — and reports them separately, so a shields outage is never confused with a missing artifact. The validator reads the badge block itself, so it can never drift out of sync with the badges actually shown above. It also runs weekly, best-effort, via `.github/workflows/validate-badges.yml`, which only ever opens or comments on an issue and never gates a commit, push or PR, because the check depends on GitHub Pages and shields.io propagation that a commit has no control over.
+
 ---
 
 ## 🧩 Available Packages
