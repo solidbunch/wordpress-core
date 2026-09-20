@@ -20,7 +20,8 @@ const {
 } = require('./lib/constants');
 const { isObject, distUrl, normalizeHost } = require('./lib/util');
 const { compareVersions, findDuplicates } = require('./lib/versions');
-const { httpGet, describeResponse, withRetries } = require('./lib/http');
+const { httpGet, httpGetBuffer, describeResponse, withRetries } = require('./lib/http');
+const { sha1, md5, MD5_RE } = require('./lib/checksums');
 const { parsePackages, readPackagesFile } = require('./lib/packages-file');
 
 const PACKAGES_FILE = 'packages.json';
@@ -57,6 +58,43 @@ async function fetchShasum(url, retries) {
     if (!SHASUM_RE.test(shasum)) return { retry: `HTTP 200 but body is not a SHA-1: ${JSON.stringify(shasum.slice(0, 100))}` };
     return { shasum };
   }, { retries });
+}
+
+// Downloads the archive, hashes it locally and compares against the already-fetched published SHA-1;
+// then does the same for the (optional) published MD5. Never trusts the upstream shasum alone.
+// Returns { ok: true, bytes, noMd5? }, { ok: false, mismatch: 'sha1'|'md5', expected, actual } or
+// { failure: <reason> } for exhausted transient failures (see contract C3 in the plan).
+async function verifyArchive(url, expectedSha1, retries) {
+  const archiveOutcome = await withRetries(async () => {
+    const res = await httpGetBuffer(url);
+    if (res.error) return { retry: res.error };
+    if (res.status !== 200) {
+      return { retry: `HTTP ${res.status}: ${res.buffer.toString('utf8').trim().replace(/\s+/g, ' ').slice(0, 500)}` };
+    }
+    return { buffer: res.buffer };
+  }, { retries });
+  if (archiveOutcome.failure) return { failure: archiveOutcome.failure };
+
+  const actualSha1 = sha1(archiveOutcome.buffer);
+  if (actualSha1 !== expectedSha1) return { ok: false, mismatch: 'sha1', expected: expectedSha1, actual: actualSha1 };
+
+  // A 404 on .md5 is normal (not every archive has one) and never fails the run.
+  const md5Outcome = await withRetries(async () => {
+    const res = await httpGet(`${url}.md5`);
+    if (res.error) return { retry: res.error };
+    if (res.status === 404) return { noMd5: true };
+    if (res.status !== 200) return { retry: describeResponse(res) };
+    const published = res.body.trim();
+    if (!MD5_RE.test(published)) return { retry: `HTTP 200 but body is not an MD5: ${JSON.stringify(published.slice(0, 100))}` };
+    return { published };
+  }, { retries });
+  if (md5Outcome.failure) return { failure: md5Outcome.failure };
+  if (md5Outcome.noMd5) return { ok: true, bytes: archiveOutcome.buffer.length, noMd5: true };
+
+  const actualMd5 = md5(archiveOutcome.buffer);
+  if (actualMd5 !== md5Outcome.published) return { ok: false, mismatch: 'md5', expected: md5Outcome.published, actual: actualMd5 };
+
+  return { ok: true, bytes: archiveOutcome.buffer.length };
 }
 
 function readPackages({ required }) {
@@ -318,13 +356,25 @@ async function resolveNew(variant, version, sibling, offer, getVersionPhpMetadat
   const result = await fetchShasum(url, NEW_ENTRY_RETRIES);
   if (result.missing) return { status: 'skipped', reason: `${variant.name} ${version}: ${url}.sha1 returned 404` };
   if (result.failure) return { status: 'deferred', reason: `${variant.name} ${version}: ${result.failure}` };
+
+  const verification = await verifyArchive(url, result.shasum, NEW_ENTRY_RETRIES);
+  if (verification.failure) return { status: 'deferred', reason: `${variant.name} ${version}: ${verification.failure}` };
+  if (!verification.ok) {
+    return {
+      status: 'deferred',
+      reason: `${variant.name} ${version}: CHECKSUM-MISMATCH ${verification.mismatch} of ${url}: published ${verification.expected}, computed ${verification.actual}`
+    };
+  }
+
   let metadata = sibling ? metadataFromSibling(sibling) : metadataFromOffer(offer);
   if (!metadata) {
     const fetched = await getVersionPhpMetadata();
     if (fetched.failure) return { status: 'deferred', reason: `${variant.name} ${version}: ${fetched.failure}` };
     metadata = fetched.metadata;
   }
-  return { status: 'added', entry: buildEntry(variant, newFields(variant, version, metadata), url, result.shasum) };
+  const added = { status: 'added', entry: buildEntry(variant, newFields(variant, version, metadata), url, result.shasum) };
+  if (verification.noMd5) added.noMd5 = `NO-MD5: ${variant.name} ${version}: ${url}.md5 returned 404`;
+  return added;
 }
 
 async function resolveVersion(version, previous, offer) {
@@ -375,7 +425,7 @@ async function fetchStableVersions() {
 function printReport(packages, added, lists) {
   for (const variant of VARIANTS) console.log(`${variant.name}: ${Object.keys(packages[variant.name]).length} versions`);
   console.log(`Added versions: ${added.length ? added.join(', ') : 'none'}`);
-  for (const line of [...lists.skipped, ...lists.asymmetric, ...lists.deferred, ...lists.ignored]) console.log(line);
+  for (const line of [...lists.skipped, ...lists.noMd5, ...lists.asymmetric, ...lists.deferred, ...lists.ignored]) console.log(line);
 }
 
 async function generate() {
@@ -403,7 +453,7 @@ async function generate() {
 
   const packages = {};
   const added = [];
-  const lists = { skipped: [], deferred: [], ignored, asymmetric: [] };
+  const lists = { skipped: [], deferred: [], ignored, asymmetric: [], noMd5: [] };
   const deferredVersions = new Set();
   for (const variant of VARIANTS) packages[variant.name] = {};
   sorted.forEach((version, index) => {
@@ -412,6 +462,7 @@ async function generate() {
       if (result.entry) packages[variant.name][version] = result.entry;
       if (result.status === 'added' && !added.includes(version)) added.push(version);
       if (result.status === 'skipped') lists.skipped.push(`SKIPPED-NO-ARCHIVE: ${result.reason}`);
+      if (result.noMd5) lists.noMd5.push(result.noMd5);
       if (result.status === 'deferred') {
         lists.deferred.push(`DEFERRED: ${result.reason}`);
         deferredVersions.add(version);
@@ -512,6 +563,7 @@ module.exports = {
   parseVersionPhp,
   readVersionPhpAssignment,
   asymmetricLines,
+  verifyArchive,
   resolveExisting,
   resolveNew,
   resolveVersion,
