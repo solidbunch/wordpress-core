@@ -144,7 +144,48 @@ This plugin recognizes `type: wordpress-core` and places the archive into the sp
 
 ## 🔁 Migrating from johnpbloch/wordpress-core
 
-### `composer.json` changes
+### Option A: keep your current installer (only the core package changes)
+
+Installers key off the package `type` (`wordpress-core`), not the vendor. Your existing installer therefore keeps placing the core in `extra.wordpress-install-dir` after the package name changes. This was checked with a placeholder package of type `wordpress-core` for both `johnpbloch/wordpress-core-installer` and `roots/wordpress-core-installer`, and with the real `solidbunch/wordpress-core` 6.9.8 archive for `johnpbloch/wordpress-core-installer`. Option A applies to both installers.
+
+The metapackage `johnpbloch/wordpress` requires the installer, so after you remove the metapackage the installer must be required explicitly.
+
+Before (johnpbloch):
+
+```json
+{
+  "require": {
+    "johnpbloch/wordpress": "^6.9"
+  },
+  "extra": {
+    "wordpress-install-dir": "web/wp-core"
+  }
+}
+```
+
+After (solidbunch, same installer):
+
+```json
+{
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://solidbunch.github.io/wordpress-core"
+    }
+  ],
+  "require": {
+    "johnpbloch/wordpress-core-installer": "^2.0",
+    "solidbunch/wordpress-core": "^6.9"
+  },
+  "extra": {
+    "wordpress-install-dir": "web/wp-core"
+  }
+}
+```
+
+Do not add `solidbunch/composer-installers` on top of another core installer unless you also define `extra.installer-paths`: without a matching rule it puts the package in `vendor/` and ignores `wordpress-install-dir`. Pick one mechanism.
+
+### Option B: `installer-paths` with solidbunch/composer-installers
 
 Before (johnpbloch):
 
@@ -171,7 +212,7 @@ After (solidbunch):
   ],
   "require": {
     "solidbunch/wordpress-core": "^6.9",
-    "solidbunch/composer-installers": "*"
+    "solidbunch/composer-installers": "^1.1"
   },
   "extra": {
     "installer-paths": {
@@ -199,13 +240,13 @@ johnpbloch's installer places the archive using `extra.wordpress-install-dir`. T
 }
 ```
 
-The `type:wordpress-core` rule is **required**, not optional. Composer's installer-paths mechanism calls `supports($packageType)` on the installer plugin, and that method only receives the package's `type` field — never its name or vendor. A rule based on `vendor:solidbunch` or `solidbunch/wordpress-core` alone would not work here; only `type:wordpress-core` (or a wildcard `type:*`) causes `solidbunch/composer-installers` to place the package.
+`solidbunch/composer-installers` understands two kinds of `installer-paths` rules: `type:<package-type>` (for example `type:wordpress-core`) and an exact package name (for example `solidbunch/wordpress-core-no-content`). Other forms, including `vendor:<name>` and the wildcard `type:*`, are not matched: the package then falls back to `vendor/`. `type:wordpress-core` is the recommended rule because it covers both variants.
 
 ### Honest limitations
 
 - **`composer.lock` does not migrate automatically.** The version numbers published by this repository are identical to WordPress's own (e.g. `7.1.1`), but `johnpbloch/wordpress` and `solidbunch/wordpress-core` are different Composer package names. Composer has no way to infer that one replaces the other, so the old lock entry is simply removed and a new one is added for the new name — there is no in-place version bump.
 - **Checksum re-fetch limit still applies**, as already noted above: an entry that already has a valid checksum is never re-fetched. This applies equally to a freshly migrated `composer.lock` entry once it is committed.
-- **`provide: wordpress/core-implementation` makes core packages mutually exclusive.** Both `solidbunch/wordpress-core` and `solidbunch/wordpress-core-no-content` declare `provide: { "wordpress/core-implementation": "<version>" }`. If another package in the same project (e.g. `johnpbloch/wordpress` or a different core-implementation package) also declares this same virtual package, Composer will refuse to install both at once. This conflict is intentional: a project should have exactly one WordPress core implementation installed.
+- **`provide: wordpress/core-implementation`.** Both packages declare it, like `johnpbloch/wordpress-core` and `roots/wordpress-no-content`, so packages that require this virtual package are satisfied by either. Composer does not treat two providers as conflicting, so it will not stop you from installing two core packages; a project should install exactly one.
 
 ### Unverified
 
@@ -216,7 +257,7 @@ The `type:wordpress-core` rule is **required**, not optional. Composer's install
 |                       | `solidbunch/wordpress-core`                                                                                        | `johnpbloch/wordpress-core`         |
 | --------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
 | `dist` source          | `downloads.wordpress.org` release archive                                                                             | GitHub zipball                       |
-| `dist.shasum`          | SHA-1 from the published `.sha1`, verified locally against the downloaded archive on first add, and re-checked weekly | empty (no checksum verification)     |
+| `dist.shasum`          | SHA-1 from the published `.sha1`; for versions added from 2026-09-20 also verified locally against the downloaded archive; all entries re-checked weekly against the published `.sha1` | empty (no checksum verification)     |
 | No-content variant     | yes                                                                                                                    | no                                    |
 | Pre-release versions   | yes, when wordpress.org publishes the archive                                                                         | no                                    |
 | Old versions           | every stable release from 4.1 onwards, never removed                                                                  | —                                     |
@@ -227,7 +268,7 @@ The `type:wordpress-core` rule is **required**, not optional. Composer's install
 
 The `packages.json` is kept up to date by the Node.js script `generate-packages-json.js` (included in this repository), which is run by GitHub Actions. The script `check-new-versions.js` decides whether the generator needs to run; it never modifies `packages.json` (it only writes its `run=` output for the workflow). It queries both the stable and the beta channel (`?channel=beta`) of the WordPress `version-check` API; a beta-channel failure is reported (`BETA-CHANNEL-UNAVAILABLE`) and ignored rather than failing the check, since the beta channel is advisory only.
 
-- `update-packages.yml` runs a light check about every 10 minutes (cron `3-59/10 * * * *`, deliberately off the hour). The check compares the versions offered by the WordPress `version-check` API with `packages.json` and starts the generator only when a new release whose archive is already published is missing. Once a day (cron `7 4 * * *`) it forces a full generator run, which also picks up versions that only `stable-check` lists. It can also be started manually (`workflow_dispatch`), which always forces a full generator run. If the `update` job fails, it opens a new GitHub issue or comments on the existing one; after a successful push, `packages.json` is attested with `actions/attest` — this is an audit trail for the file GitHub Actions produced, it does not prove the authenticity of the upstream WordPress archives themselves. A separate `publish` job in the same workflow tags new versions on the per-variant Packagist mirrors described above; it stays inert until the repository variables and the `PUBLISH_TOKEN` secret are configured, and it never pushes to this repository or changes what GitHub Pages serves.
+- `update-packages.yml` runs a light check. The check is scheduled every 10 minutes (the actual cadence observed so far is much lower, see below) with cron `3-59/10 * * * *`, deliberately off the hour. The check compares the versions offered by the WordPress `version-check` API with `packages.json` and starts the generator only when a new release whose archive is already published is missing. Once a day (cron `7 4 * * *`) it forces a full generator run, which also picks up versions that only `stable-check` lists. It can also be started manually (`workflow_dispatch`), which always forces a full generator run. If the `update` job fails, it opens a new GitHub issue or comments on the existing one; after a successful push, `packages.json` is attested with `actions/attest` — this is an audit trail for the file GitHub Actions produced, it does not prove the authenticity of the upstream WordPress archives themselves. A separate `publish` job is prepared to tag new versions in per-variant repositories for Packagist. It is inert until the `PUBLISH_REPO_*` repository variables and the `PUBLISH_TOKEN` secret are configured, and it never pushes to this repository or changes what GitHub Pages serves. Neither package is on Packagist yet.
 - `audit-checksums.yml` runs weekly (Monday 05:17 UTC) and re-checks the published `.sha1` of every entry already stored in `packages.json` against wordpress.org. It never overwrites anything; a mismatch fails the run and opens or comments on an issue.
 - `ci.yml` runs `node --test` and `node generate-packages-json.js --check` on every pull request and on every push to `main`.
 - `keepalive.yml` makes a monthly heartbeat commit (1st of the month, 06:00 UTC)
@@ -236,7 +277,7 @@ All workflow steps that run a third-party action pin it to a commit SHA (not a f
 
 Each generator run also writes `status.json` and the `badges/` directory alongside `packages.json` in the same commit, so the README badges above always reflect the same run.
 
-No end-to-end guarantee is made on how quickly a new release appears in `packages.json` for a client. GitHub documents `schedule` triggers as best-effort: the ~10-minute cron above can be delayed by tens of minutes under high load, and a queued run can be dropped entirely. When the check does run and finds a release with a published archive, the generator itself needs a few minutes to download and verify each new archive before committing. After the commit, GitHub Pages needs to rebuild (typically 1–2 minutes), and its CDN serves `packages.json` with `max-age=600`, so a client can keep seeing the previous file for up to 10 more minutes even after Pages has rebuilt. In practice a release usually shows up within tens of minutes, but any single step above can push that further out. Each run's job summary lists every version it added, with the archive's own `Last-Modified` time and the time the generator observed it, so actual latency is observable rather than assumed.
+No end-to-end guarantee is made on how quickly a new release appears in `packages.json` for a client. GitHub documents `schedule` triggers as best-effort: scheduled runs can be delayed by hours under load, and a queued run can be dropped entirely. When the check does run and finds a release with a published archive, the generator itself needs a few minutes to download and verify each new archive before committing. After the commit, GitHub Pages needs to rebuild (typically 1–2 minutes), and its CDN serves `packages.json` with `max-age=600`, so a client can keep seeing the previous file for up to 10 more minutes even after Pages has rebuilt. Measured on 2026-09-19/20: 8 scheduled runs in about 20.6 hours, 115 to 306 minutes apart (median 168). Until the pickup lag is measured (see `status.json`), treat the time from a WordPress release to its appearance here as hours, not minutes. Each run's job summary lists every version it added, with the archive's own `Last-Modified` time and the time the generator observed it, so actual latency is observable rather than assumed.
 
 On every generator run:
 
