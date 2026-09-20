@@ -125,7 +125,8 @@ async function runOfflineResolution({ variant, version, entry }) {
         const composerJson = {
           repositories: [{ type: 'composer', url: serverUrl }, { 'packagist.org': false }],
           require: { [manifest.name]: version },
-          config: { platform: { php: '8.3.0' } },
+          // The fixture server is plain HTTP on loopback; newer Composer refuses that by default.
+          config: { platform: { php: '8.3.0' }, 'secure-http': false },
           'minimum-stability': 'stable'
         };
         fs.writeFileSync(path.join(projectDir, 'composer.json'), JSON.stringify(composerJson, null, 2));
