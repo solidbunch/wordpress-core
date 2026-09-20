@@ -11,20 +11,6 @@ A Composer-compatible repository of WordPress core distributions maintained by S
 [![WordPress tracked](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress.json)](https://solidbunch.github.io/wordpress-core/status.json)
 [![Pickup lag](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fpickup-lag.json)](https://solidbunch.github.io/wordpress-core/status.json)
 
-| Badge | What it is | Where the number comes from |
-|---|---|---|
-| CI | last `ci.yml` run on `main` | GitHub Actions' own badge endpoint |
-| WordPress release watch | last `update-packages.yml` run on `main` | GitHub Actions' own badge endpoint |
-| Weekly checksum audit | last `audit-checksums.yml` run on `main` | GitHub Actions' own badge endpoint |
-| Repository Keepalive | last `keepalive.yml` run on `main` | GitHub Actions' own badge endpoint |
-| the two version badges | highest version present in `packages.json` for that variant | `badges/*.json`, generated from `packages.json` by `generate-packages-json.js --status`; a `(pre-release)` suffix means the newest entry is a beta or RC |
-| WordPress tracked | highest **stable** WordPress release present in `packages.json` | the same artifact; prereleases are deliberately excluded here |
-| Pickup lag | for the most recent version this repo added: the gap between the archive's own `Last-Modified` and the moment the generator observed it | the same measurement the run's job summary prints under `## Added versions`, carried into `status.json`; **a single past measurement, not an average and not a promise** |
-
-The raw data behind the last four badges is `https://solidbunch.github.io/wordpress-core/status.json`, readable directly if a badge image does not load. Those four badges are rendered by shields.io, a third-party service used without any account or credential; if it is unavailable or rate-limits, the images simply fail to load and nothing in this repository depends on it. Badge values can lag reality by roughly a quarter of an hour: GitHub Pages' CDN serves the artifact with `max-age=600` (see "Automatic generation" below) and shields.io caches an endpoint badge for at least 300 s. The pickup lag is the generator's own observation time; the client-visible delay is longer, as explained in the "Automatic generation" section's latency paragraph.
-
-Run `node validate-badges.js` to check every badge URL in this README against the live services. For each shields.io badge it makes two independent checks — the shields image endpoint and the underlying Pages artifact it reads from — and reports them separately, so a shields outage is never confused with a missing artifact. The validator reads the badge block itself, so it can never drift out of sync with the badges actually shown above. It also runs weekly, best-effort, via `.github/workflows/validate-badges.yml`, which only ever opens or comments on an issue and never gates a commit, push or PR, because the check depends on GitHub Pages and shields.io propagation that a commit has no control over.
-
 ---
 
 ## 🧩 Available Packages
