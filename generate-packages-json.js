@@ -10,6 +10,7 @@ const {
   LICENSE,
   MIN_VERSION,
   VERSION_RE,
+  ANY_VERSION_RE,
   SHASUM_RE,
   PHP_REQUIREMENT_RE,
   VARIANTS,
@@ -157,9 +158,9 @@ function validate(packages, previous) {
     const keys = Object.keys(entries);
     if (keys.length === 0) violations.push(`EMPTY-PACKAGE: ${variant.name} has no versions`);
 
-    const validKeys = keys.filter((key) => VERSION_RE.test(key));
+    const validKeys = keys.filter((key) => ANY_VERSION_RE.test(key));
     for (const key of keys) {
-      if (!VERSION_RE.test(key)) violations.push(`BAD-VERSION-KEY: ${variant.name} has key ${JSON.stringify(key)}`);
+      if (!ANY_VERSION_RE.test(key)) violations.push(`BAD-VERSION-KEY: ${variant.name} has key ${JSON.stringify(key)}`);
     }
     violations.push(...findDuplicates(validKeys).map((line) => `${line} in ${variant.name}`));
     for (let i = 1; i < validKeys.length; i++) {
@@ -508,7 +509,7 @@ async function generate() {
   const existingVersions = new Set();
   for (const entries of Object.values(previous)) {
     for (const key of Object.keys(entries)) {
-      if (!VERSION_RE.test(key)) throw new Error(`existing key ${JSON.stringify(key)} does not match the stable version pattern; decide by hand`);
+      if (!ANY_VERSION_RE.test(key)) throw new Error(`existing key ${JSON.stringify(key)} does not match the stable version pattern; decide by hand`);
       existingVersions.add(key);
     }
   }

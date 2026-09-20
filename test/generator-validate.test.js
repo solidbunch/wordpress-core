@@ -54,6 +54,12 @@ test('validate: BAD-VERSION-KEY when an entry key is not a stable version string
   assert.equal(violationsFor('BAD-VERSION-KEY', validate(packages, {})).length, 1);
 });
 
+test('validate: BAD-VERSION-KEY still fires for a non-prerelease-grammar key like "6.9-alpha1"', () => {
+  const packages = validPackages();
+  packages[full.name]['6.9-alpha1'] = entryFor(full, '6.9-alpha1');
+  assert.equal(violationsFor('BAD-VERSION-KEY', validate(packages, {})).length, 1);
+});
+
 test('validate: DUPLICATE-VERSION when two keys are the same Composer version', () => {
   const packages = validPackages('6.9');
   packages[full.name]['6.9.0'] = entryFor(full, '6.9.0');
@@ -64,6 +70,14 @@ test('validate: ORDER when versions are not strictly descending', () => {
   const packages = {
     [noContent.name]: { '6.8': entryFor(noContent, '6.8'), '6.9': entryFor(noContent, '6.9') },
     [full.name]: { '6.8': entryFor(full, '6.8'), '6.9': entryFor(full, '6.9') }
+  };
+  assert.equal(violationsFor('ORDER', validate(packages, {})).length, 2);
+});
+
+test('validate: ORDER fires when a prerelease precedes its own stable release', () => {
+  const packages = {
+    [noContent.name]: { '7.1-RC1': entryFor(noContent, '7.1-RC1'), '7.1': entryFor(noContent, '7.1') },
+    [full.name]: { '7.1-RC1': entryFor(full, '7.1-RC1'), '7.1': entryFor(full, '7.1') }
   };
   assert.equal(violationsFor('ORDER', validate(packages, {})).length, 2);
 });

@@ -3,7 +3,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { versionParts, compareVersions, findDuplicates } = require('../lib/versions');
+const { versionParts, parseVersion, isPrerelease, compareVersions, canonicalVersion, findDuplicates } = require('../lib/versions');
 const { distUrl, normalizeHost } = require('../lib/util');
 const { VARIANTS } = require('../lib/constants');
 
@@ -57,4 +57,45 @@ test('normalizeHost rewrites protocol and host to the canonical download host', 
 
 test('normalizeHost(undefined) is undefined', () => {
   assert.equal(normalizeHost(undefined), undefined);
+});
+
+test('parseVersion recognizes stable and prerelease versions', () => {
+  assert.deepEqual(parseVersion('6.9.1-RC2'), { parts: [6, 9, 1], stage: 'RC', stageRank: 2, stageNumber: 2 });
+  assert.deepEqual(parseVersion('6.9'), { parts: [6, 9, 0], stage: 'stable', stageRank: 3, stageNumber: 0 });
+  assert.deepEqual(parseVersion('6.9-beta1'), { parts: [6, 9, 0], stage: 'beta', stageRank: 1, stageNumber: 1 });
+});
+
+test('parseVersion returns null for anything not a valid stable or prerelease version', () => {
+  for (const version of ['nonsense', '6.9-rc1', '6.9-RC', '6.9-alpha1', '6.9.1.2']) {
+    assert.equal(parseVersion(version), null, version);
+  }
+});
+
+test('isPrerelease distinguishes stable from beta/RC versions', () => {
+  assert.equal(isPrerelease('6.9'), false);
+  assert.equal(isPrerelease('6.9.1'), false);
+  assert.equal(isPrerelease('6.9-beta1'), true);
+  assert.equal(isPrerelease('6.9.1-RC2'), true);
+});
+
+test('compareVersions orders stable > RC > beta strictly descending over a fixed list', () => {
+  const ordered = ['7.1.1', '7.1', '7.1-RC2', '7.1-RC1', '7.1-beta2', '7.1-beta1', '7.0.5'];
+  for (let i = 1; i < ordered.length; i++) {
+    assert.ok(compareVersions(ordered[i - 1], ordered[i]) > 0, `${ordered[i - 1]} > ${ordered[i]}`);
+  }
+});
+
+test('compareVersions throws on an unparseable input', () => {
+  assert.throws(() => compareVersions('6.9-alpha1', '6.9'));
+  assert.throws(() => compareVersions('6.9', 'nonsense'));
+});
+
+test('canonicalVersion collapses "6.9-RC1" and "6.9.0-RC1" to the same identity', () => {
+  assert.equal(canonicalVersion('6.9.0-RC1'), canonicalVersion('6.9-RC1'));
+});
+
+test('findDuplicates flags "6.9-RC1" and "6.9.0-RC1" as duplicates, like it does for stable versions', () => {
+  const duplicates = findDuplicates(['6.9-RC1', '6.9.0-RC1']);
+  assert.equal(duplicates.length, 1);
+  assert.match(duplicates[0], /^DUPLICATE-VERSION: 6\.9-RC1 == 6\.9\.0-RC1$/);
 });
