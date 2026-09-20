@@ -2,6 +2,23 @@
 
 A Composer-compatible repository of WordPress core distributions maintained by SolidBunch for the [StarterKit](https://starter-kit.io).
 
+[![CI](https://github.com/solidbunch/wordpress-core/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/ci.yml)
+[![WordPress release watch](https://github.com/solidbunch/wordpress-core/actions/workflows/update-packages.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/update-packages.yml)
+[![solidbunch/wordpress-core version](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress-core.json)](https://solidbunch.github.io/wordpress-core/status.json)
+[![solidbunch/wordpress-core-no-content version](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress-core-no-content.json)](https://solidbunch.github.io/wordpress-core/status.json)
+[![WordPress tracked](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress.json)](https://solidbunch.github.io/wordpress-core/status.json)
+[![Pickup lag](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fpickup-lag.json)](https://solidbunch.github.io/wordpress-core/status.json)
+
+| Badge | What it is | Where the number comes from |
+|---|---|---|
+| CI | last `ci.yml` run on `main` | GitHub Actions' own badge endpoint |
+| WordPress release watch | last `update-packages.yml` run on `main` | GitHub Actions' own badge endpoint |
+| the two version badges | highest version present in `packages.json` for that variant | `badges/*.json`, generated from `packages.json` by `generate-packages-json.js --status`; a `(pre-release)` suffix means the newest entry is a beta or RC |
+| WordPress tracked | highest **stable** WordPress release present in `packages.json` | the same artifact; prereleases are deliberately excluded here |
+| Pickup lag | for the most recent version this repo added: the gap between the archive's own `Last-Modified` and the moment the generator observed it | the same measurement the run's job summary prints under `## Added versions`, carried into `status.json`; **a single past measurement, not an average and not a promise** |
+
+The raw data behind the last four badges is `https://solidbunch.github.io/wordpress-core/status.json`, readable directly if a badge image does not load. Those four badges are rendered by shields.io, a third-party service used without any account or credential; if it is unavailable or rate-limits, the images simply fail to load and nothing in this repository depends on it. Badge values can lag reality by roughly a quarter of an hour: GitHub Pages' CDN serves the artifact with `max-age=600` (see "Automatic generation" below) and shields.io caches an endpoint badge for at least 300 s. The pickup lag is the generator's own observation time; the client-visible delay is longer, as explained in the "Automatic generation" section's latency paragraph.
+
 ---
 
 ## 🧩 Available Packages
@@ -219,6 +236,8 @@ The `packages.json` is kept up to date by the Node.js script `generate-packages-
 - `keepalive.yml` makes a monthly heartbeat commit (1st of the month, 06:00 UTC)
 
 All workflow steps that run a third-party action pin it to a commit SHA (not a floating tag); Dependabot proposes updates to those pins weekly.
+
+Each generator run also writes `status.json` and the `badges/` directory alongside `packages.json` in the same commit, so the README badges above always reflect the same run.
 
 No end-to-end guarantee is made on how quickly a new release appears in `packages.json` for a client. GitHub documents `schedule` triggers as best-effort: the ~10-minute cron above can be delayed by tens of minutes under high load, and a queued run can be dropped entirely. When the check does run and finds a release with a published archive, the generator itself needs a few minutes to download and verify each new archive before committing. After the commit, GitHub Pages needs to rebuild (typically 1–2 minutes), and its CDN serves `packages.json` with `max-age=600`, so a client can keep seeing the previous file for up to 10 more minutes even after Pages has rebuilt. In practice a release usually shows up within tens of minutes, but any single step above can push that further out. Each run's job summary lists every version it added, with the archive's own `Last-Modified` time and the time the generator observed it, so actual latency is observable rather than assumed.
 
