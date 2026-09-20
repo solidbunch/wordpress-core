@@ -26,6 +26,7 @@ const { httpGet, httpGetBuffer, describeResponse, withRetries } = require('./lib
 const { sha1, md5, MD5_RE } = require('./lib/checksums');
 const { parsePackages, readPackagesFile } = require('./lib/packages-file');
 const { parseHeaderDate, toIso, formatLag } = require('./lib/time');
+const { buildStatus, buildBadges, readPickup, writeStatusFiles, STATUS_FILE } = require('./lib/status');
 
 const PACKAGES_FILE = 'packages.json';
 
@@ -559,6 +560,41 @@ function writeJobSummary(rows) {
   }
 }
 
+// Data contract C: picks the pickup measurement for this run from summaryRows ({version, package,
+// lastModified}). Considers only rows whose lastModified parses via parseHeaderDate; among those,
+// picks the row with the highest version under compareVersions. Ties (e.g. both variants of one
+// version sharing a Last-Modified) resolve to the first row encountered, which is deterministic
+// because `sorted` is deterministic. Returns undefined if no row qualifies - the caller then falls
+// back to the previously recorded pickup.
+function selectPickup(summaryRows, now) {
+  let best;
+  for (const row of summaryRows) {
+    const published = parseHeaderDate(row.lastModified);
+    if (!published) continue;
+    if (!best || compareVersions(row.version, best.version) > 0) {
+      best = { version: row.version, published };
+    }
+  }
+  if (!best) return undefined;
+  return {
+    version: best.version,
+    publishedAt: toIso(best.published),
+    observedAt: toIso(now),
+    lagSeconds: Math.max(0, Math.round((now.getTime() - best.published.getTime()) / 1000))
+  };
+}
+
+// Never allowed to fail the run: writing status.json/badges is best-effort, same defensive shape as
+// writeJobSummary. A badge artifact must never be the reason a verified WordPress release fails to land.
+function writeStatus(packages, summaryRows) {
+  try {
+    const pickup = selectPickup(summaryRows, new Date()) || readPickup(STATUS_FILE);
+    writeStatusFiles(process.cwd(), buildStatus(packages, pickup));
+  } catch (err) {
+    console.warn(`STATUS-FAILED: ${err.message}`);
+  }
+}
+
 async function generate() {
   const previous = readPackages({ required: false });
   const existingVersions = new Set();
@@ -617,6 +653,7 @@ async function generate() {
   printReport(packages, added, lists);
   if (deferredVersions.size) console.log(`INCOMPLETE: ${deferredVersions.size} version(s) deferred`);
   writeJobSummary(summaryRows);
+  writeStatus(packages, summaryRows);
   if (process.env.GITHUB_OUTPUT) {
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `commit_version=${added[0] || ''}\nincomplete=${deferredVersions.size}\n`);
   }
@@ -675,12 +712,27 @@ async function backfill() {
   for (const variant of VARIANTS) console.log(`${variant.name}: ${Object.keys(packages[variant.name]).length} versions rebuilt`);
 }
 
+// Rebuilds status.json/badges from the local packages.json, carrying forward the previous pickup.
+// Performs zero network requests. Unlike the best-effort writeStatus() call inside generate(), this
+// mode's errors ARE fatal (exit 1): --status exists specifically to verify the committed artifacts,
+// so silently swallowing a failure here would defeat the whole point of running it.
+async function status() {
+  const packages = readPackages({ required: true });
+  const pickup = readPickup(STATUS_FILE);
+  const built = buildStatus(packages, pickup);
+  writeStatusFiles(process.cwd(), built);
+  for (const relativePath of [STATUS_FILE, ...Object.keys(buildBadges(built))]) {
+    console.log(`wrote ${relativePath}`);
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
-  const usage = 'usage: node generate-packages-json.js [--check|--backfill]';
-  if (args.length > 1 || (args.length === 1 && args[0] !== '--check' && args[0] !== '--backfill')) throw new Error(usage);
+  const usage = 'usage: node generate-packages-json.js [--check|--backfill|--status]';
+  if (args.length > 1 || (args.length === 1 && args[0] !== '--check' && args[0] !== '--backfill' && args[0] !== '--status')) throw new Error(usage);
   if (args[0] === '--check') return check();
   if (args[0] === '--backfill') return backfill();
+  if (args[0] === '--status') return status();
   return generate();
 }
 
@@ -711,7 +763,10 @@ module.exports = {
   fetchStableVersions,
   formatSummary,
   writeJobSummary,
+  selectPickup,
+  writeStatus,
   check,
   generate,
-  backfill
+  backfill,
+  status
 };

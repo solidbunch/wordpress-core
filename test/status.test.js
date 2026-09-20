@@ -7,6 +7,7 @@ const path = require('path');
 
 const { withTempDir } = require('./helpers');
 const { buildStatus, buildBadges, readPickup, writeStatusFiles, STATUS_FILE, BADGES_DIR } = require('../lib/status');
+const { selectPickup } = require('../generate-packages-json');
 
 const NO_CONTENT = 'solidbunch/wordpress-core-no-content';
 const FULL = 'solidbunch/wordpress-core';
@@ -135,6 +136,40 @@ test('readPickup: a real pickup object is returned verbatim', () => {
     fs.writeFileSync(file, JSON.stringify({ pickup }));
     assert.deepEqual(readPickup(file), pickup);
   });
+});
+
+test('selectPickup: two variants of one version - only one row is picked', () => {
+  const now = new Date('2026-09-19T09:21:37Z');
+  const rows = [
+    { version: '7.1.2', package: NO_CONTENT, lastModified: 'Fri, 18 Sep 2026 09:12:04 GMT' },
+    { version: '7.1.2', package: FULL, lastModified: 'Fri, 19 Sep 2026 09:12:04 GMT' }
+  ];
+  const pickup = selectPickup(rows, now);
+  assert.equal(pickup.version, '7.1.2');
+  assert.equal(pickup.publishedAt, '2026-09-18T09:12:04Z');
+  assert.equal(pickup.observedAt, '2026-09-19T09:21:37Z');
+});
+
+test('selectPickup: an unparseable Last-Modified header is excluded', () => {
+  const now = new Date('2026-09-19T09:21:37Z');
+  const rows = [{ version: '7.1.2', package: FULL, lastModified: 'not a date' }];
+  assert.equal(selectPickup(rows, now), undefined);
+});
+
+test('selectPickup: an empty row list -> undefined', () => {
+  assert.equal(selectPickup([], new Date('2026-09-19T09:21:37Z')), undefined);
+});
+
+test('selectPickup: the highest version wins even when it is not the first row', () => {
+  const now = new Date('2026-09-19T09:21:37Z');
+  const rows = [
+    { version: '7.0.0', package: FULL, lastModified: 'Fri, 10 Sep 2026 09:12:04 GMT' },
+    { version: '7.1.2', package: FULL, lastModified: 'Fri, 19 Sep 2026 09:12:04 GMT' },
+    { version: '7.0.5', package: FULL, lastModified: 'Fri, 15 Sep 2026 09:12:04 GMT' }
+  ];
+  const pickup = selectPickup(rows, now);
+  assert.equal(pickup.version, '7.1.2');
+  assert.equal(pickup.lagSeconds, 573);
 });
 
 test('writeStatusFiles: creates all five files with a trailing newline and two-space indent', () => {
