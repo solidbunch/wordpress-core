@@ -2,8 +2,7 @@ name: WordPress release watch
 
 on:
   schedule:
-    - cron: "3-59/10 * * * *" # light release check; fallback only, the Cloudflare cron in cloudflare-worker/ is the primary trigger
-    - cron: "7 4 * * *"
+    - cron: "7 4 * * *" # daily full run; also the fallback if the Cloudflare cron in cloudflare-worker/ stops
   workflow_dispatch:     # manual or external trigger; a full generator run unless mode is "light"
     inputs:
       mode:
