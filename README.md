@@ -277,7 +277,7 @@ The `packages.json` is kept up to date by the Node.js script `generate-packages-
 - `audit-checksums.yml` runs weekly (Monday 05:17 UTC) and re-checks the published `.sha1` of every entry already stored in `packages.json` against wordpress.org. It never overwrites anything; a mismatch fails the run and opens or comments on an issue.
 - `ci.yml` runs `node --test` and `node generate-packages-json.js --check` on every pull request and on every push to `main`.
 - `keepalive.yml` makes a monthly heartbeat commit (1st of the month, 06:00 UTC)
-- `cloudflare-worker/` holds the Cloudflare Worker that triggers `update-packages.yml` every 10 minutes. To deploy it, from that directory run `npx wrangler secret put GITHUB_TOKEN` (a fine-grained token limited to this repository with `Actions: write`) and then `npx wrangler deploy`.
+- `cloudflare-worker/` holds the Cloudflare Worker that triggers `update-packages.yml` every 10 minutes and serves `/badge.json`, a shields.io endpoint badge with the age of the last successful run of that workflow (green up to 30 minutes, yellow up to 2 hours, red beyond). To deploy it, from that directory run `npx wrangler secret put GITHUB_TOKEN` (a fine-grained token limited to this repository with `Actions: Read and write`) and then `npx wrangler deploy`. To show the badge, add `![Last release check](https://img.shields.io/endpoint?url=<URL-encoded https://wordpress-core-release-watch.<account>.workers.dev/badge.json>)` to the badge block at the top of this file.
 
 All workflow steps that run a third-party action pin it to a commit SHA (not a floating tag); Dependabot proposes updates to those pins weekly.
 
