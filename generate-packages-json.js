@@ -230,7 +230,7 @@ function validateEntry(variant, key, entry) {
 
   const require = entry.require;
   if (!isObject(require) || Object.keys(require).join() !== 'php' || !PHP_REQUIREMENT_RE.test(require.php)) {
-    violations.push(`REQUIRE: ${at} has require ${JSON.stringify(require)}, expected {"php": ">=X.Y"}`);
+    violations.push(`REQUIRE: ${at} has require ${JSON.stringify(require)}, expected {"php": ">=X.Y" or ">=X.Y.Z"}`);
   }
 
   const dist = entry.dist;
@@ -320,7 +320,7 @@ function metadataFromSibling(sibling) {
 
 function metadataFromOffer(offer) {
   if (!offer || typeof offer.php_version !== 'string') return null;
-  const php = `>=${offer.php_version.split('.').slice(0, 2).join('.')}`;
+  const php = `>=${offer.php_version.split('.').slice(0, 3).join('.')}`;
   if (!PHP_REQUIREMENT_RE.test(php)) return null;
   const mysql = typeof offer.mysql_version === 'string' && offer.mysql_version !== '' ? offer.mysql_version : undefined;
   return { php, extra: mysql === undefined ? undefined : { mysql_version: mysql } };
@@ -351,7 +351,7 @@ function parseVersionPhp(text) {
   const phpVersion = readVersionPhpAssignment(text, 'required_php_version');
   const mysqlVersion = readVersionPhpAssignment(text, 'required_mysql_version');
   if (phpVersion === null || mysqlVersion === null) return null;
-  const php = `>=${phpVersion.split('.').slice(0, 2).join('.')}`;
+  const php = `>=${phpVersion}`;
   if (!PHP_REQUIREMENT_RE.test(php)) return null;
   return { php, extra: { mysql_version: mysqlVersion } };
 }

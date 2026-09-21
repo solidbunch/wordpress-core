@@ -1,0 +1,11 @@
+name = "wordpress-core-release-watch"
+main = "worker.mjs"
+compatibility_date = "2026-09-01"
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[vars]
+GITHUB_REPOSITORY = "solidbunch/wordpress-core"
+GITHUB_REF = "main"
+WORKFLOW_FILE = "update-packages.yml"

@@ -2,9 +2,17 @@ name: WordPress release watch
 
 on:
   schedule:
-    - cron: "3-59/10 * * * *" # light release check, off the hour because scheduled runs are delayed at :00
+    - cron: "3-59/10 * * * *" # light release check; fallback only, the Cloudflare cron in cloudflare-worker/ is the primary trigger
     - cron: "7 4 * * *"
-  workflow_dispatch:     # allows manual triggering of the workflow, always a full generator run
+  workflow_dispatch:     # manual or external trigger; a full generator run unless mode is "light"
+    inputs:
+      mode:
+        description: "light = release check only (used by the Cloudflare cron), full = always run the generator"
+        type: choice
+        options:
+          - full
+          - light
+        default: full
 
 jobs:
   check:
@@ -26,7 +34,7 @@ jobs:
       - name: Check for a new WordPress release
         id: gate
         env:
-          FORCE_FULL: ${{ github.event_name == 'workflow_dispatch' || github.event.schedule == '7 4 * * *' }}
+          FORCE_FULL: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode != 'light') || github.event.schedule == '7 4 * * *' }}
         run: node check-new-versions.js
 
   update:

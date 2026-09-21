@@ -108,7 +108,7 @@ Composer's default `minimum-stability` is `stable`, which will not install these
 All packages include:
 
 - `license: GPL-2.0-or-later`: the license of the WordPress archive itself (the scripts in this repository are MIT, see `LICENSE.md`)
-- `require.php`: the PHP requirement of each release (`>=X.Y`), taken from the WordPress API or from the release's own `wp-includes/version.php`
+- `require.php`: the PHP requirement of each release (`>=X.Y` or `>=X.Y.Z`, exactly as WordPress states it), taken from the WordPress API or from the release's own `wp-includes/version.php`
 - Optional `extra.mysql_version` field for advanced tooling
 - `dist.shasum`: the SHA-1 of the release archive, taken from the `.sha1` file that wordpress.org publishes next to each archive (e.g. `https://downloads.wordpress.org/release/wordpress-7.1.zip.sha1`). Composer verifies it on download.
 
@@ -118,15 +118,20 @@ All packages include:
 
 ## 🔧 Custom Install Paths with solidbunch/composer-installers
 
-To control where the WordPress core is installed (e.g. `web/wp-core/` instead of `vendor/`), use the optional Composer plugin:
+By default Composer installs the WordPress core into `vendor/`, no plugin needed. To control where it is installed (e.g. `web/wp-core/` instead of `vendor/`), use the optional Composer plugin (requires PHP ≥ 8.1):
 
 ```bash
 composer require solidbunch/composer-installers
 ```
 
-Then add the installer path to your `composer.json`:
+Composer 2.2+ only runs plugins listed in `allow-plugins`, so allow it (`composer require` asks interactively; in CI, add it yourself) and add the installer path to your `composer.json`:
 
 ```json
+"config": {
+  "allow-plugins": {
+    "solidbunch/composer-installers": true
+  }
+},
 "extra": {
   "installer-paths": {
     "web/wp-core/": [
@@ -183,7 +188,7 @@ After (solidbunch, same installer):
 }
 ```
 
-Do not add `solidbunch/composer-installers` on top of another core installer unless you also define `extra.installer-paths`: without a matching rule it puts the package in `vendor/` and ignores `wordpress-install-dir`. Pick one mechanism.
+Since `solidbunch/composer-installers` 1.1.1 it can be installed next to another core installer without taking over: it claims `wordpress-core` only when `extra.installer-paths` has a rule that can match it (a `type:wordpress-core` rule, or any rule that is not a `type:` rule, such as an exact package name). Without such a rule your current installer keeps using `wordpress-install-dir`. A package-name rule makes it claim the whole `wordpress-core` type, so the other installer is no longer consulted for it. Pick one mechanism for placement.
 
 ### Option B: `installer-paths` with solidbunch/composer-installers
 
@@ -248,9 +253,9 @@ johnpbloch's installer places the archive using `extra.wordpress-install-dir`. T
 - **Checksum re-fetch limit still applies**, as already noted above: an entry that already has a valid checksum is never re-fetched. This applies equally to a freshly migrated `composer.lock` entry once it is committed.
 - **`provide: wordpress/core-implementation`.** Both packages declare it, like `johnpbloch/wordpress-core` and `roots/wordpress-no-content`, so packages that require this virtual package are satisfied by either. Composer does not treat two providers as conflicting, so it will not stop you from installing two core packages; a project should install exactly one.
 
-### Unverified
+### Security advisories
 
-**Unverified**: which package names WordPress core's existing published security advisories are filed under (`composer audit` cross-references named packages) has not been confirmed. As a result, `composer audit` does not inherit any advisory history under `solidbunch/wordpress-core` or `solidbunch/wordpress-core-no-content` — migrating does not carry over any advisory coverage that may exist for `johnpbloch/*` or other package names.
+Checked on 2026-09-21 against the Packagist security-advisories API: no advisories are filed under `johnpbloch/wordpress-core`, `roots/wordpress` or `roots/wordpress-no-content`, so migrating does not lose any advisory coverage there. `composer audit` matches advisories by package name, so an advisory filed later under `johnpbloch/*` would not apply to `solidbunch/wordpress-core` or `solidbunch/wordpress-core-no-content`, and this repository publishes none of its own. Other advisory sources, such as the GitHub Advisory Database, were not checked.
 
 ### Comparison with johnpbloch/wordpress-core
 
@@ -268,10 +273,11 @@ johnpbloch's installer places the archive using `extra.wordpress-install-dir`. T
 
 The `packages.json` is kept up to date by the Node.js script `generate-packages-json.js` (included in this repository), which is run by GitHub Actions. The script `check-new-versions.js` decides whether the generator needs to run; it never modifies `packages.json` (it only writes its `run=` output for the workflow). It queries both the stable and the beta channel (`?channel=beta`) of the WordPress `version-check` API; a beta-channel failure is reported (`BETA-CHANNEL-UNAVAILABLE`) and ignored rather than failing the check, since the beta channel is advisory only.
 
-- `update-packages.yml` runs a light check. The check is scheduled every 10 minutes (the actual cadence observed so far is much lower, see below) with cron `3-59/10 * * * *`, deliberately off the hour. The check compares the versions offered by the WordPress `version-check` API with `packages.json` and starts the generator only when a new release whose archive is already published is missing. Once a day (cron `7 4 * * *`) it forces a full generator run, which also picks up versions that only `stable-check` lists. It can also be started manually (`workflow_dispatch`), which always forces a full generator run. If the `update` job fails, it opens a new GitHub issue or comments on the existing one; after a successful push, `packages.json` is attested with `actions/attest` — this is an audit trail for the file GitHub Actions produced, it does not prove the authenticity of the upstream WordPress archives themselves. A separate `publish` job is prepared to tag new versions in per-variant repositories for Packagist. It is inert until the `PUBLISH_REPO_*` repository variables and the `PUBLISH_TOKEN` secret are configured, and it never pushes to this repository or changes what GitHub Pages serves. Neither package is on Packagist yet.
+- `update-packages.yml` runs a light check. The check is started every 10 minutes by a Cloudflare Worker cron (`cloudflare-worker/`) that calls `workflow_dispatch` with `mode=light`. GitHub's own `schedule` cron `3-59/10 * * * *` stays as a fallback, because scheduled runs in this repository are delayed by hours (see below). The check compares the versions offered by the WordPress `version-check` API with `packages.json` and starts the generator only when a new release whose archive is already published is missing. Once a day (cron `7 4 * * *`) it forces a full generator run, which also picks up versions that only `stable-check` lists. It can also be started manually (`workflow_dispatch`), which forces a full generator run unless `mode` is `light`. If the `update` job fails, it opens a new GitHub issue or comments on the existing one; after a successful push, `packages.json` is attested with `actions/attest` — this is an audit trail for the file GitHub Actions produced, it does not prove the authenticity of the upstream WordPress archives themselves. A separate `publish` job is prepared to tag new versions in per-variant repositories for Packagist. It is inert until the `PUBLISH_REPO_*` repository variables and the `PUBLISH_TOKEN` secret are configured, and it never pushes to this repository or changes what GitHub Pages serves. Neither package is on Packagist yet.
 - `audit-checksums.yml` runs weekly (Monday 05:17 UTC) and re-checks the published `.sha1` of every entry already stored in `packages.json` against wordpress.org. It never overwrites anything; a mismatch fails the run and opens or comments on an issue.
 - `ci.yml` runs `node --test` and `node generate-packages-json.js --check` on every pull request and on every push to `main`.
 - `keepalive.yml` makes a monthly heartbeat commit (1st of the month, 06:00 UTC)
+- `cloudflare-worker/` holds the Cloudflare Worker that triggers `update-packages.yml` every 10 minutes. To deploy it, from that directory run `npx wrangler secret put GITHUB_TOKEN` (a fine-grained token limited to this repository with `Actions: write`) and then `npx wrangler deploy`.
 
 All workflow steps that run a third-party action pin it to a commit SHA (not a floating tag); Dependabot proposes updates to those pins weekly.
 
