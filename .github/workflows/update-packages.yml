@@ -47,6 +47,7 @@ jobs:
       issues: write
       id-token: write
       attestations: write
+      actions: read # reading this workflow's own run list, for the pickup reaction measurement
     concurrency:
       group: wp-core-repo-write
       cancel-in-progress: false
@@ -71,8 +72,29 @@ jobs:
         run: |
           if [ -n "$PUBLISH_TOKEN" ]; then echo "present=true" >> "$GITHUB_OUTPUT"; else echo "present=false" >> "$GITHUB_OUTPUT"; fi
 
+      # Upper bound on our own reaction time: the release was not visible at the previous release
+      # check, so we published it at most (commit - that check) after it appeared. Best-effort - an
+      # empty value makes the generator record an unmeasured reaction instead of failing the run.
+      # The run list is queried without `status`/`branch`: those filters are served by the Actions
+      # search index, which can lag by weeks and hand back an ancient run.
+      - name: Find the previous release check
+        id: previous
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          started=$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq '.run_started_at')
+          previous=$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/update-packages.yml/runs?per_page=50" \
+            --jq "[.workflow_runs[]
+                   | select(.id != $GITHUB_RUN_ID)
+                   | select(.run_started_at < \"$started\")
+                   | .run_started_at] | max // empty")
+          echo "checked_at=$previous" >> "$GITHUB_OUTPUT"
+
       - name: Generate packages.json
         id: generate
+        env:
+          PREVIOUS_CHECK_AT: ${{ steps.previous.outputs.checked_at }}
         run: node generate-packages-json.js
 
       - name: Commit and Push if Changed

@@ -561,17 +561,29 @@ function writeJobSummary(rows) {
 }
 
 // Data contract C: picks the pickup measurement for this run from summaryRows ({version, package,
-// lastModified}). Considers only rows whose lastModified parses via parseHeaderDate; among those,
-// picks the row with the highest version under compareVersions. Ties (e.g. both variants of one
-// version sharing a Last-Modified) resolve to the first row encountered, which is deterministic
+// lastModified}). Considers only rows whose lastModified parses via parseHeaderDate.
+//
+// One run yields two numbers, because they answer different questions and only one of them is about
+// us. `lagSeconds` is how long the archive sat on wordpress.org before it landed here, measured
+// against the NEWEST archive of the batch: a backport wave is built branch by branch over hours, so
+// every earlier file's age is dominated by that build queue rather than by anything we do.
+// `reactionSeconds` is our own share and nothing else - the release was not visible at the previous
+// release check, so we published it at most (now - previousCheck) after it appeared. It is an upper
+// bound by construction: the instant it went live is not observable, it only lies inside that
+// interval.
+//
+// `batchSize` counts distinct versions, not rows, because both variants of one version are one
+// release. Ties on the newest archive resolve to the first row encountered, which is deterministic
 // because `sorted` is deterministic. Returns undefined if no row qualifies - the caller then falls
 // back to the previously recorded pickup.
-function selectPickup(summaryRows, now) {
+function selectPickup(summaryRows, now, previousCheck = null) {
   let best;
+  const versions = new Set();
   for (const row of summaryRows) {
     const published = parseHeaderDate(row.lastModified);
     if (!published) continue;
-    if (!best || compareVersions(row.version, best.version) > 0) {
+    versions.add(row.version);
+    if (!best || published.getTime() > best.published.getTime()) {
       best = { version: row.version, published };
     }
   }
@@ -580,15 +592,29 @@ function selectPickup(summaryRows, now) {
     version: best.version,
     publishedAt: toIso(best.published),
     observedAt: toIso(now),
-    lagSeconds: Math.max(0, Math.round((now.getTime() - best.published.getTime()) / 1000))
+    lagSeconds: Math.max(0, Math.round((now.getTime() - best.published.getTime()) / 1000)),
+    batchSize: versions.size,
+    previousCheckAt: previousCheck ? toIso(previousCheck) : null,
+    reactionSeconds:
+      previousCheck ? Math.max(0, Math.round((now.getTime() - previousCheck.getTime()) / 1000)) : null
   };
+}
+
+// The workflow passes the previous release check's start time in PREVIOUS_CHECK_AT. Absent or
+// unparseable - a local run, a test, a failed API call - means the reaction goes unmeasured rather
+// than guessed at, so the badge says so instead of showing a number nobody can trust.
+function previousCheckFromEnv() {
+  const raw = process.env.PREVIOUS_CHECK_AT;
+  if (typeof raw !== 'string' || raw.trim() === '') return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 // Never allowed to fail the run: writing status.json/badges is best-effort, same defensive shape as
 // writeJobSummary. A badge artifact must never be the reason a verified WordPress release fails to land.
 function writeStatus(packages, summaryRows) {
   try {
-    const pickup = selectPickup(summaryRows, new Date()) || readPickup(STATUS_FILE);
+    const pickup = selectPickup(summaryRows, new Date(), previousCheckFromEnv()) || readPickup(STATUS_FILE);
     writeStatusFiles(process.cwd(), buildStatus(packages, pickup));
   } catch (err) {
     console.warn(`STATUS-FAILED: ${err.message}`);

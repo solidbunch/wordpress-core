@@ -51,7 +51,7 @@ test('parseBadgeBlock: a blank line inside the block terminates it', () => {
 // ---------------------------------------------------------------------------
 
 test('classifyBadge: production shields URLs decode to the expected Pages target', () => {
-  const names = ['wordpress-core', 'wordpress-core-no-content', 'wordpress', 'pickup-lag'];
+  const names = ['wordpress-core', 'wordpress-core-no-content', 'wordpress', 'pickup-lag', 'reaction-lag'];
   for (const name of names) {
     const imageUrl = `https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2F${name}.json`;
     const classified = classifyBadge({ alt: name, imageUrl, linkUrl: 'https://example.com', line: 1 });

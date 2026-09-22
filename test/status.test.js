@@ -71,15 +71,68 @@ test('buildStatus + buildBadges: an empty variant yields nulls and a "none" badg
   assert.equal(badge.color, 'lightgrey');
 });
 
-test('buildBadges: pickup null -> "not measured yet"', () => {
+test('buildBadges: pickup null -> both lag badges read "not measured yet"', () => {
   const status = buildStatus({ [NO_CONTENT]: {}, [FULL]: {} }, null);
   const badges = buildBadges(status);
-  const lag = badges[`${BADGES_DIR}/pickup-lag.json`];
-  assert.equal(lag.message, 'not measured yet');
-  assert.equal(lag.color, 'lightgrey');
+
+  for (const file of ['pickup-lag', 'reaction-lag']) {
+    const badge = badges[`${BADGES_DIR}/${file}.json`];
+    assert.equal(badge.message, 'not measured yet', file);
+    assert.equal(badge.color, 'lightgrey', file);
+  }
 });
 
-test('buildBadges: a real pickup -> message is "9m 33s (7.1.2)"', () => {
+test('buildBadges: a single-version pickup -> message is "9m 33s (7.1.2)"', () => {
+  const pickup = {
+    version: '7.1.2',
+    publishedAt: '2026-09-19T09:12:04Z',
+    observedAt: '2026-09-19T09:21:37Z',
+    lagSeconds: 573,
+    batchSize: 1,
+    previousCheckAt: '2026-09-19T09:06:12Z',
+    reactionSeconds: 925
+  };
+  const status = buildStatus({ [NO_CONTENT]: {}, [FULL]: entries(['7.1.2']) }, pickup);
+  const badges = buildBadges(status);
+  const lag = badges[`${BADGES_DIR}/pickup-lag.json`];
+  assert.equal(lag.label, 'wordpress.org \u2192 package');
+  assert.equal(lag.message, '9m 33s (7.1.2)');
+  assert.equal(lag.color, 'informational');
+});
+
+test('buildBadges: a backport wave names the batch size so it cannot read as our stall', () => {
+  const pickup = {
+    version: '4.7.37',
+    publishedAt: '2026-09-22T18:07:53Z',
+    observedAt: '2026-09-22T19:00:47Z',
+    lagSeconds: 3174,
+    batchSize: 19,
+    previousCheckAt: '2026-09-22T18:45:23Z',
+    reactionSeconds: 924
+  };
+  const status = buildStatus({ [NO_CONTENT]: {}, [FULL]: entries(['4.7.37']) }, pickup);
+  const badges = buildBadges(status);
+  assert.equal(badges[`${BADGES_DIR}/pickup-lag.json`].message, '52m 54s (4.7.37, newest of 19)');
+});
+
+test('buildBadges: the reaction badge states an upper bound, not a figure', () => {
+  const pickup = {
+    version: '4.7.37',
+    publishedAt: '2026-09-22T18:07:53Z',
+    observedAt: '2026-09-22T19:00:47Z',
+    lagSeconds: 3174,
+    batchSize: 19,
+    previousCheckAt: '2026-09-22T18:45:23Z',
+    reactionSeconds: 924
+  };
+  const status = buildStatus({ [NO_CONTENT]: {}, [FULL]: entries(['4.7.37']) }, pickup);
+  const badge = buildBadges(status)[`${BADGES_DIR}/reaction-lag.json`];
+  assert.equal(badge.label, 'pickup reaction');
+  assert.equal(badge.message, '\u226415m 24s');
+  assert.equal(badge.color, 'informational');
+});
+
+test('buildBadges: a pickup carried over from before the split still renders both badges', () => {
   const pickup = {
     version: '7.1.2',
     publishedAt: '2026-09-19T09:12:04Z',
@@ -88,9 +141,12 @@ test('buildBadges: a real pickup -> message is "9m 33s (7.1.2)"', () => {
   };
   const status = buildStatus({ [NO_CONTENT]: {}, [FULL]: entries(['7.1.2']) }, pickup);
   const badges = buildBadges(status);
-  const lag = badges[`${BADGES_DIR}/pickup-lag.json`];
-  assert.equal(lag.message, '9m 33s (7.1.2)');
-  assert.equal(lag.color, 'informational');
+
+  // No batchSize reads as a single release, and an unmeasured reaction says so rather than
+  // inventing a number from the fields that happen to be there.
+  assert.equal(badges[`${BADGES_DIR}/pickup-lag.json`].message, '9m 33s (7.1.2)');
+  assert.equal(badges[`${BADGES_DIR}/reaction-lag.json`].message, 'not measured yet');
+  assert.equal(badges[`${BADGES_DIR}/reaction-lag.json`].color, 'lightgrey');
 });
 
 test('buildStatus: determinism - two calls on the same input produce byte-identical JSON.stringify output', () => {
@@ -138,7 +194,7 @@ test('readPickup: a real pickup object is returned verbatim', () => {
   });
 });
 
-test('selectPickup: two variants of one version - only one row is picked', () => {
+test('selectPickup: two variants of one version count once and yield the newer archive', () => {
   const now = new Date('2026-09-19T09:21:37Z');
   const rows = [
     { version: '7.1.2', package: NO_CONTENT, lastModified: 'Fri, 18 Sep 2026 09:12:04 GMT' },
@@ -146,8 +202,9 @@ test('selectPickup: two variants of one version - only one row is picked', () =>
   ];
   const pickup = selectPickup(rows, now);
   assert.equal(pickup.version, '7.1.2');
-  assert.equal(pickup.publishedAt, '2026-09-18T09:12:04Z');
+  assert.equal(pickup.publishedAt, '2026-09-19T09:12:04Z');
   assert.equal(pickup.observedAt, '2026-09-19T09:21:37Z');
+  assert.equal(pickup.batchSize, 1);
 });
 
 test('selectPickup: an unparseable Last-Modified header is excluded', () => {
@@ -160,19 +217,54 @@ test('selectPickup: an empty row list -> undefined', () => {
   assert.equal(selectPickup([], new Date('2026-09-19T09:21:37Z')), undefined);
 });
 
-test('selectPickup: the highest version wins even when it is not the first row', () => {
-  const now = new Date('2026-09-19T09:21:37Z');
+test('selectPickup: the newest archive wins, not the highest version number', () => {
+  // wordpress.org builds a backport wave newest-branch-first, so the highest version number is the
+  // FIRST file built and carries the whole build queue in its age. 6.5.12 here is that trap.
+  const now = new Date('2026-09-22T19:00:47Z');
   const rows = [
-    { version: '7.0.0', package: FULL, lastModified: 'Fri, 10 Sep 2026 09:12:04 GMT' },
-    { version: '7.1.2', package: FULL, lastModified: 'Fri, 19 Sep 2026 09:12:04 GMT' },
-    { version: '7.0.5', package: FULL, lastModified: 'Fri, 15 Sep 2026 09:12:04 GMT' }
+    { version: '6.5.12', package: FULL, lastModified: 'Tue, 22 Sep 2026 16:35:19 GMT' },
+    { version: '6.0.16', package: FULL, lastModified: 'Tue, 22 Sep 2026 17:12:09 GMT' },
+    { version: '4.7.37', package: FULL, lastModified: 'Tue, 22 Sep 2026 18:07:53 GMT' }
   ];
   const pickup = selectPickup(rows, now);
-  assert.equal(pickup.version, '7.1.2');
-  assert.equal(pickup.lagSeconds, 573);
+  assert.equal(pickup.version, '4.7.37');
+  assert.equal(pickup.publishedAt, '2026-09-22T18:07:53Z');
+  assert.equal(pickup.lagSeconds, 3174);
+  assert.equal(pickup.batchSize, 3);
 });
 
-test('writeStatusFiles: creates all five files with a trailing newline and two-space indent', () => {
+test('selectPickup: batchSize counts versions, not rows', () => {
+  const now = new Date('2026-09-19T09:21:37Z');
+  const rows = [
+    { version: '7.1.2', package: NO_CONTENT, lastModified: 'Fri, 19 Sep 2026 09:12:04 GMT' },
+    { version: '7.1.2', package: FULL, lastModified: 'Fri, 19 Sep 2026 09:12:04 GMT' },
+    { version: '7.0.6', package: NO_CONTENT, lastModified: 'Fri, 19 Sep 2026 09:10:00 GMT' },
+    { version: '7.0.6', package: FULL, lastModified: 'Fri, 19 Sep 2026 09:10:00 GMT' }
+  ];
+  assert.equal(selectPickup(rows, now).batchSize, 2);
+});
+
+test('selectPickup: a previous check time yields the reaction bound; without one it stays null', () => {
+  const now = new Date('2026-09-22T19:00:47Z');
+  const rows = [{ version: '4.7.37', package: FULL, lastModified: 'Tue, 22 Sep 2026 18:07:53 GMT' }];
+
+  const measured = selectPickup(rows, now, new Date('2026-09-22T18:45:23Z'));
+  assert.equal(measured.previousCheckAt, '2026-09-22T18:45:23Z');
+  assert.equal(measured.reactionSeconds, 924);
+
+  const unmeasured = selectPickup(rows, now);
+  assert.equal(unmeasured.previousCheckAt, null);
+  assert.equal(unmeasured.reactionSeconds, null);
+});
+
+test('selectPickup: a previous check newer than the commit clamps to zero instead of going negative', () => {
+  const now = new Date('2026-09-22T19:00:47Z');
+  const rows = [{ version: '4.7.37', package: FULL, lastModified: 'Tue, 22 Sep 2026 18:07:53 GMT' }];
+  const pickup = selectPickup(rows, now, new Date('2026-09-22T19:05:00Z'));
+  assert.equal(pickup.reactionSeconds, 0);
+});
+
+test('writeStatusFiles: creates all six files with a trailing newline and two-space indent', () => {
   return withTempDir(async (dir) => {
     const status = buildStatus(
       { [NO_CONTENT]: entries(['7.1.2']), [FULL]: entries(['7.1.2', '7.2-RC1']) },
@@ -185,7 +277,8 @@ test('writeStatusFiles: creates all five files with a trailing newline and two-s
       `${BADGES_DIR}/wordpress-core.json`,
       `${BADGES_DIR}/wordpress-core-no-content.json`,
       `${BADGES_DIR}/wordpress.json`,
-      `${BADGES_DIR}/pickup-lag.json`
+      `${BADGES_DIR}/pickup-lag.json`,
+      `${BADGES_DIR}/reaction-lag.json`
     ];
 
     for (const relativePath of files) {

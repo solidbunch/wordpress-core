@@ -2,7 +2,7 @@
 
 A Composer-compatible repository of WordPress core distributions maintained by SolidBunch for the [StarterKit](https://starter-kit.io).
 
-New WordPress releases are checked for **every 15 minutes**. A Cloudflare Worker cron starts the release check workflow, and the *Last release check* badge below shows how long ago the last successful check finished.
+New WordPress releases are checked for **every 15 minutes**. A Cloudflare Worker cron starts the release check workflow, and the *Last release check* badge below shows how long ago the last successful check started.
 
 <div align="center">
 
@@ -13,7 +13,8 @@ New WordPress releases are checked for **every 15 minutes**. A Cloudflare Worker
 [![solidbunch/wordpress-core version](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress-core.json)](https://solidbunch.github.io/wordpress-core/status.json)
 [![WordPress tracked](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress.json)](https://solidbunch.github.io/wordpress-core/status.json)
 [![Last release check](https://img.shields.io/endpoint?url=https%3A%2F%2Fwordpress-core-release-watch.starter-kit.io%2Fbadge.json)](https://github.com/solidbunch/wordpress-core/actions/workflows/update-packages.yml)
-[![Pickup lag](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fpickup-lag.json)](https://solidbunch.github.io/wordpress-core/status.json)
+[![wordpress.org to package](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fpickup-lag.json)](https://solidbunch.github.io/wordpress-core/status.json)
+[![Pickup reaction](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Freaction-lag.json)](https://solidbunch.github.io/wordpress-core/status.json)
 
 </div>
 
@@ -266,11 +267,16 @@ The `packages.json` is kept up to date by the Node.js script `generate-packages-
 - `audit-checksums.yml` runs weekly (Monday 05:17 UTC) and re-checks the published `.sha1` of every entry already stored in `packages.json` against wordpress.org. It never overwrites anything; a mismatch fails the run and opens or comments on an issue.
 - `ci.yml` runs `node --test` and `node generate-packages-json.js --check` on every pull request and on every push to `main`.
 - `keepalive.yml` makes a monthly heartbeat commit (1st of the month, 06:00 UTC)
-- `cloudflare-worker/` holds the Cloudflare Worker that triggers `update-packages.yml` every 15 minutes and serves `/badge.json`, a shields.io endpoint badge with the age of the last successful run of that workflow (green up to 30 minutes, yellow up to 2 hours, red beyond). To deploy it, from that directory run `npx wrangler secret put GITHUB_TOKEN` (a fine-grained token limited to this repository with `Actions: Read and write`) and then `npx wrangler deploy`.
+- `cloudflare-worker/` holds the Cloudflare Worker that triggers `update-packages.yml` every 15 minutes and serves `/badge.json`, a shields.io endpoint badge with the age of the last successful run of that workflow, measured from its `run_started_at` (green up to 30 minutes, yellow up to 2 hours, red beyond). To deploy it, from that directory run `npx wrangler secret put GITHUB_TOKEN` (a fine-grained token limited to this repository with `Actions: Read and write`) and then `npx wrangler deploy`.
 
 All workflow steps that run a third-party action pin it to a commit SHA (not a floating tag); Dependabot proposes updates to those pins weekly.
 
 Each generator run also writes `status.json` and the `badges/` directory alongside `packages.json` in the same commit, so the README badges above always reflect the same run.
+
+Two of those badges measure latency, and they are deliberately separate because only one of them is about this repository:
+
+- ***wordpress.org → package*** is how long the archive existed on wordpress.org before it landed here (`pickup.lagSeconds`). It is measured against the **newest** archive of the batch, and the message names the batch size when a run adds more than one version. wordpress.org builds a backport wave branch by branch over hours, newest branch first, so the highest version number in a wave is the first file built and its age is mostly that build queue — on 2026-09-22 the same release read as 2h 25m against `6.5.12` and 53m against `4.7.37`.
+- ***pickup reaction*** is this repository's own share (`pickup.reactionSeconds`): the release was not visible at the previous release check, so it was published at most that long after it appeared. The `≤` is literal — the instant a release goes live on wordpress.org is not observable from outside, so this is an upper bound, and in normal operation it simply reflects the 15-minute check interval. It grows only when the check cadence itself breaks.
 
 The release check runs every 15 minutes, started by the Cloudflare Worker. When the check finds a release with a published archive, the generator downloads and verifies each new archive before committing. After the commit, GitHub Pages rebuilds (typically 1–2 minutes) and serves `packages.json` through its CDN with `max-age=600`. Each run's job summary lists every version it added, with the archive's own `Last-Modified` time and the time the generator observed it, so the latency of every release can be read from the run.
 
