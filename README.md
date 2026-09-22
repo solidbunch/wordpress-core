@@ -11,11 +11,9 @@ New WordPress releases are checked for **every 15 minutes**. A Cloudflare Worker
 [![Weekly checksum audit](https://github.com/solidbunch/wordpress-core/actions/workflows/audit-checksums.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/audit-checksums.yml)
 [![Repository Keepalive](https://github.com/solidbunch/wordpress-core/actions/workflows/keepalive.yml/badge.svg?branch=main)](https://github.com/solidbunch/wordpress-core/actions/workflows/keepalive.yml)  
 [![solidbunch/wordpress-core version](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress-core.json)](https://solidbunch.github.io/wordpress-core/status.json)
-[![solidbunch/wordpress-core-no-content version](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress-core-no-content.json)](https://solidbunch.github.io/wordpress-core/status.json)
 [![WordPress tracked](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fwordpress.json)](https://solidbunch.github.io/wordpress-core/status.json)
 [![Last release check](https://img.shields.io/endpoint?url=https%3A%2F%2Fwordpress-core-release-watch.starter-kit.io%2Fbadge.json)](https://github.com/solidbunch/wordpress-core/actions/workflows/update-packages.yml)
-
-<!-- [![Pickup lag](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fpickup-lag.json)](https://solidbunch.github.io/wordpress-core/status.json) -->
+[![Pickup lag](https://img.shields.io/endpoint?url=https%3A%2F%2Fsolidbunch.github.io%2Fwordpress-core%2Fbadges%2Fpickup-lag.json)](https://solidbunch.github.io/wordpress-core/status.json)
 
 </div>
 
