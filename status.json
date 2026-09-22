@@ -2,19 +2,24 @@
   "schemaVersion": 1,
   "packages": {
     "solidbunch/wordpress-core-no-content": {
-      "latest": "7.1.1",
-      "latestStable": "7.1.1",
-      "count": 671
+      "latest": "7.1.2",
+      "latestStable": "7.1.2",
+      "count": 673
     },
     "solidbunch/wordpress-core": {
-      "latest": "7.1.1",
-      "latestStable": "7.1.1",
-      "count": 671
+      "latest": "7.1.2",
+      "latestStable": "7.1.2",
+      "count": 673
     }
   },
   "wordpress": {
-    "latestStable": "7.1.1",
+    "latestStable": "7.1.2",
     "latestPrerelease": null
   },
-  "pickup": null
+  "pickup": {
+    "version": "7.1.2",
+    "publishedAt": "2026-09-22T13:25:21Z",
+    "observedAt": "2026-09-22T13:30:36Z",
+    "lagSeconds": 316
+  }
 }

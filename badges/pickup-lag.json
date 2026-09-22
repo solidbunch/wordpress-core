@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
   "label": "pickup lag (last added version)",
-  "message": "not measured yet",
-  "color": "lightgrey"
+  "message": "5m 16s (7.1.2)",
+  "color": "informational"
 }
