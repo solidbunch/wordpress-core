@@ -157,11 +157,11 @@ for (const { variant, version, entry } of cases) {
     const { lockedPackage, manifest, servedDistUrl } = await runOfflineResolution({ variant, version, entry });
 
     assert.equal(lockedPackage.name, manifest.name);
-    assert.equal(lockedPackage.version, '7.1.1');
+    assert.equal(lockedPackage.version, version);
     assert.equal(lockedPackage.dist.url, servedDistUrl);
     assert.equal(lockedPackage.dist.shasum, manifest.dist.shasum);
     assert.equal(lockedPackage.type, 'wordpress-core');
-    assert.equal(lockedPackage.provide['wordpress/core-implementation'], '7.1.1');
+    assert.equal(lockedPackage.provide['wordpress/core-implementation'], version);
 
     if (variant.hasSource) {
       assert.ok(lockedPackage.source, `${manifest.name} should keep its source key`);
