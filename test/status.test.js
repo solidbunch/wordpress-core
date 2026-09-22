@@ -56,6 +56,10 @@ test('buildStatus: a prerelease above the newest stable -> reported, but wordpre
 
   const badges = buildBadges(status);
   const wordpress = badges[`${BADGES_DIR}/wordpress.json`];
+  // "latest stable", not "WordPress tracked": the number comes from our own packages.json, so a
+  // label implying an upstream reading would oversell it - and this is the one case where it does
+  // not simply repeat the variant badge, which shows the prerelease.
+  assert.equal(wordpress.label, 'latest stable');
   assert.equal(wordpress.message, '7.1.2');
   assert.equal(wordpress.color, 'blue');
 });
