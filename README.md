@@ -69,6 +69,18 @@ Any available version can be required exactly:
 }
 ```
 
+### Automatic update PRs (Dependabot)
+
+Since this package isn't on Packagist, Dependabot needs a `composer` ecosystem entry in your `.github/dependabot.yml` to see new versions — it resolves them from the `repositories` entry above, no extra config needed:
+
+```yaml
+updates:
+  - package-ecosystem: "composer"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+```
+
 ### Available versions
 
 Every stable WordPress release from the 4.1 branch onwards is kept and is never removed from the repository. The oldest available version is `4.1`; the newest is the latest WordPress release.
