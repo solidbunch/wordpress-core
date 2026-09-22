@@ -17,9 +17,12 @@
     "latestPrerelease": null
   },
   "pickup": {
-    "version": "6.5.12",
-    "publishedAt": "2026-09-22T16:35:19Z",
+    "version": "4.7.37",
+    "publishedAt": "2026-09-22T18:07:53Z",
     "observedAt": "2026-09-22T19:00:47Z",
-    "lagSeconds": 8728
+    "lagSeconds": 3174,
+    "batchSize": 19,
+    "previousCheckAt": "2026-09-22T18:45:23Z",
+    "reactionSeconds": 924
   }
 }
