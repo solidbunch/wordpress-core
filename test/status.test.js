@@ -86,7 +86,9 @@ test('buildBadges: pickup null -> both lag badges read "not measured yet"', () =
   }
 });
 
-test('buildBadges: a single-version pickup -> message is "9m 33s (7.1.2)"', () => {
+test('buildBadges: an archive built after the previous check leaves wordpress.org nothing provable', () => {
+  // The fast path: the file appeared mid-interval and was taken on the very next cycle, so the
+  // whole 9m 33s may be ours and none of it is demonstrably wordpress.org's.
   const pickup = {
     version: '7.1.2',
     publishedAt: '2026-09-19T09:12:04Z',
@@ -100,8 +102,11 @@ test('buildBadges: a single-version pickup -> message is "9m 33s (7.1.2)"', () =
   const badges = buildBadges(status);
   const lag = badges[`${BADGES_DIR}/pickup-lag.json`];
   assert.equal(lag.label, 'wordpress.org \u2192 package');
-  assert.equal(lag.message, '9m 33s (7.1.2)');
+  assert.equal(lag.message, '0s (7.1.2)');
   assert.equal(lag.color, 'informational');
+
+  // Our bound tightens to the total: we cannot have been slower than the archive has existed.
+  assert.equal(badges[`${BADGES_DIR}/reaction-lag.json`].message, '9m 33s');
 });
 
 test('buildBadges: a backport wave names the batch size so it cannot read as our stall', () => {
@@ -116,7 +121,7 @@ test('buildBadges: a backport wave names the batch size so it cannot read as our
   };
   const status = buildStatus({ [NO_CONTENT]: {}, [FULL]: entries(['4.7.37']) }, pickup);
   const badges = buildBadges(status);
-  assert.equal(badges[`${BADGES_DIR}/pickup-lag.json`].message, '52m 54s (4.7.37, newest of 19)');
+  assert.equal(badges[`${BADGES_DIR}/pickup-lag.json`].message, '37m 30s (4.7.37, newest of 19)');
 });
 
 test('buildBadges: the reaction badge states an upper bound, not a figure', () => {
@@ -132,8 +137,39 @@ test('buildBadges: the reaction badge states an upper bound, not a figure', () =
   const status = buildStatus({ [NO_CONTENT]: {}, [FULL]: entries(['4.7.37']) }, pickup);
   const badge = buildBadges(status)[`${BADGES_DIR}/reaction-lag.json`];
   assert.equal(badge.label, 'pickup reaction');
-  assert.equal(badge.message, '\u226415m 24s');
+  assert.equal(badge.message, '15m 24s');
   assert.equal(badge.color, 'informational');
+});
+
+test('buildBadges: the two shares are disjoint and add up to the whole delay', () => {
+  // This is the property the split exists for: neither badge contains the other, so a reader can
+  // tell whose time the delay was instead of reading one total as though it were all ours.
+  const cases = [
+    { name: 'backport wave', lagSeconds: 3174, reactionSeconds: 924, theirs: '37m 30s', ours: '15m 24s' },
+    { name: 'built after the check', lagSeconds: 573, reactionSeconds: 925, theirs: '0s', ours: '9m 33s' },
+    { name: 'exactly one interval', lagSeconds: 900, reactionSeconds: 900, theirs: '0s', ours: '15m 0s' }
+  ];
+
+  for (const { name, lagSeconds, reactionSeconds, theirs, ours } of cases) {
+    const pickup = {
+      version: '7.1.2',
+      publishedAt: '2026-09-19T09:12:04Z',
+      observedAt: '2026-09-19T09:21:37Z',
+      lagSeconds,
+      batchSize: 1,
+      previousCheckAt: '2026-09-19T09:06:12Z',
+      reactionSeconds
+    };
+    const badges = buildBadges(buildStatus({ [NO_CONTENT]: {}, [FULL]: {} }, pickup));
+
+    assert.equal(badges[`${BADGES_DIR}/pickup-lag.json`].message, `${theirs} (7.1.2)`, name);
+    assert.equal(badges[`${BADGES_DIR}/reaction-lag.json`].message, `${ours}`, name);
+    assert.equal(
+      Math.max(0, lagSeconds - reactionSeconds) + Math.min(lagSeconds, reactionSeconds),
+      lagSeconds,
+      `${name}: the two shares must account for the whole delay`
+    );
+  }
 });
 
 test('buildBadges: a pickup carried over from before the split still renders both badges', () => {

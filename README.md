@@ -273,11 +273,6 @@ All workflow steps that run a third-party action pin it to a commit SHA (not a f
 
 Each generator run also writes `status.json` and the `badges/` directory alongside `packages.json` in the same commit, so the README badges above always reflect the same run.
 
-Two of those badges measure latency, and they are deliberately separate because only one of them is about this repository:
-
-- ***wordpress.org → package*** is how long the archive existed on wordpress.org before it landed here (`pickup.lagSeconds`). It is measured against the **newest** archive of the batch, and the message names the batch size when a run adds more than one version. wordpress.org builds a backport wave branch by branch over hours, newest branch first, so the highest version number in a wave is the first file built and its age is mostly that build queue — on 2026-09-22 the same release read as 2h 25m against `6.5.12` and 53m against `4.7.37`.
-- ***pickup reaction*** is this repository's own share (`pickup.reactionSeconds`): the release was not visible at the previous release check, so it was published at most that long after it appeared. The `≤` is literal — the instant a release goes live on wordpress.org is not observable from outside, so this is an upper bound, and in normal operation it simply reflects the 15-minute check interval. It grows only when the check cadence itself breaks.
-
 The release check runs every 15 minutes, started by the Cloudflare Worker. When the check finds a release with a published archive, the generator downloads and verifies each new archive before committing. After the commit, GitHub Pages rebuilds (typically 1–2 minutes) and serves `packages.json` through its CDN with `max-age=600`. Each run's job summary lists every version it added, with the archive's own `Last-Modified` time and the time the generator observed it, so the latency of every release can be read from the run.
 
 On every generator run:
