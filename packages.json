@@ -1,6 +1,38 @@
 {
   "packages": {
     "solidbunch/wordpress-core-no-content": {
+      "7.1.3": {
+        "name": "solidbunch/wordpress-core-no-content",
+        "version": "7.1.3",
+        "type": "wordpress-core",
+        "description": "WordPress core without wp-content, the no-content release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms",
+          "no-content"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.4"
+        },
+        "provide": {
+          "wordpress/core-implementation": "7.1.3"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-7.1.3-no-content.zip",
+          "shasum": "6c6f1135c8fd1e6f63c4d511e8be9e952d0b3433"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
       "7.1.2": {
         "name": "solidbunch/wordpress-core-no-content",
         "version": "7.1.2",
@@ -92,6 +124,38 @@
           "type": "zip",
           "url": "https://downloads.wordpress.org/release/wordpress-7.1-no-content.zip",
           "shasum": "7b28e5af89345d79a30b44a16cbe3244379d1765"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
+      "7.0.7": {
+        "name": "solidbunch/wordpress-core-no-content",
+        "version": "7.0.7",
+        "type": "wordpress-core",
+        "description": "WordPress core without wp-content, the no-content release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms",
+          "no-content"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.4"
+        },
+        "provide": {
+          "wordpress/core-implementation": "7.0.7"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-7.0.7-no-content.zip",
+          "shasum": "7fab0a3f03bde3fa385b7206dc22b45a01221dbb"
         },
         "extra": {
           "mysql_version": "5.5.5"
@@ -316,6 +380,38 @@
           "type": "zip",
           "url": "https://downloads.wordpress.org/release/wordpress-7.0-no-content.zip",
           "shasum": "2ffdd31a747f68e3e5633064993997a7ce881975"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
+      "6.9.10": {
+        "name": "solidbunch/wordpress-core-no-content",
+        "version": "6.9.10",
+        "type": "wordpress-core",
+        "description": "WordPress core without wp-content, the no-content release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms",
+          "no-content"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.2.24"
+        },
+        "provide": {
+          "wordpress/core-implementation": "6.9.10"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-6.9.10-no-content.zip",
+          "shasum": "b255daa6bfa0736c586b24cb0e87e6902540d4e0"
         },
         "extra": {
           "mysql_version": "5.5.5"
@@ -636,6 +732,38 @@
           "type": "zip",
           "url": "https://downloads.wordpress.org/release/wordpress-6.9-no-content.zip",
           "shasum": "2d8cb4b253b690e255afde1d451e87380e6a5cb5"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
+      "6.8.11": {
+        "name": "solidbunch/wordpress-core-no-content",
+        "version": "6.8.11",
+        "type": "wordpress-core",
+        "description": "WordPress core without wp-content, the no-content release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms",
+          "no-content"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.2.24"
+        },
+        "provide": {
+          "wordpress/core-implementation": "6.8.11"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-6.8.11-no-content.zip",
+          "shasum": "2a0f4f21c1fe5aed8964d5521b8dbe997ea281cc"
         },
         "extra": {
           "mysql_version": "5.5.5"
@@ -988,6 +1116,38 @@
           "type": "zip",
           "url": "https://downloads.wordpress.org/release/wordpress-6.8-no-content.zip",
           "shasum": "f6bb25f590bb6dc45d21e26de97b589c5f0703bd"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
+      "6.7.10": {
+        "name": "solidbunch/wordpress-core-no-content",
+        "version": "6.7.10",
+        "type": "wordpress-core",
+        "description": "WordPress core without wp-content, the no-content release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms",
+          "no-content"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.2.24"
+        },
+        "provide": {
+          "wordpress/core-implementation": "6.7.10"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-6.7.10-no-content.zip",
+          "shasum": "5b1a9d21796c8756c7f0dd5767de82399f5c4db5"
         },
         "extra": {
           "mysql_version": "5.5.5"
@@ -22275,6 +22435,42 @@
       }
     },
     "solidbunch/wordpress-core": {
+      "7.1.3": {
+        "name": "solidbunch/wordpress-core",
+        "version": "7.1.3",
+        "type": "wordpress-core",
+        "description": "WordPress core, the full release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.4"
+        },
+        "provide": {
+          "wordpress/core-implementation": "7.1.3"
+        },
+        "source": {
+          "type": "git",
+          "url": "https://github.com/WordPress/WordPress.git",
+          "reference": "7.1.3"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-7.1.3.zip",
+          "shasum": "13eb1d042b1ca39224e44906cd84fe203112210c"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
       "7.1.2": {
         "name": "solidbunch/wordpress-core",
         "version": "7.1.2",
@@ -22378,6 +22574,42 @@
           "type": "zip",
           "url": "https://downloads.wordpress.org/release/wordpress-7.1.zip",
           "shasum": "b2b81d9242a122a8c7104a92387794eb64fcde97"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
+      "7.0.7": {
+        "name": "solidbunch/wordpress-core",
+        "version": "7.0.7",
+        "type": "wordpress-core",
+        "description": "WordPress core, the full release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.4"
+        },
+        "provide": {
+          "wordpress/core-implementation": "7.0.7"
+        },
+        "source": {
+          "type": "git",
+          "url": "https://github.com/WordPress/WordPress.git",
+          "reference": "7.0.7"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-7.0.7.zip",
+          "shasum": "f3860c55999541b106533bce896224657b6b7953"
         },
         "extra": {
           "mysql_version": "5.5.5"
@@ -22630,6 +22862,42 @@
           "type": "zip",
           "url": "https://downloads.wordpress.org/release/wordpress-7.0.zip",
           "shasum": "6708d4e20f22e997196689751a4309497cfc58df"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
+      "6.9.10": {
+        "name": "solidbunch/wordpress-core",
+        "version": "6.9.10",
+        "type": "wordpress-core",
+        "description": "WordPress core, the full release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.2.24"
+        },
+        "provide": {
+          "wordpress/core-implementation": "6.9.10"
+        },
+        "source": {
+          "type": "git",
+          "url": "https://github.com/WordPress/WordPress.git",
+          "reference": "6.9.10"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-6.9.10.zip",
+          "shasum": "55428dc819f3e300eacfb79d5d69bd85353855df"
         },
         "extra": {
           "mysql_version": "5.5.5"
@@ -22990,6 +23258,42 @@
           "type": "zip",
           "url": "https://downloads.wordpress.org/release/wordpress-6.9.zip",
           "shasum": "964ddc9d491bb662c7dfb21b40aef561210d390c"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
+      "6.8.11": {
+        "name": "solidbunch/wordpress-core",
+        "version": "6.8.11",
+        "type": "wordpress-core",
+        "description": "WordPress core, the full release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.2.24"
+        },
+        "provide": {
+          "wordpress/core-implementation": "6.8.11"
+        },
+        "source": {
+          "type": "git",
+          "url": "https://github.com/WordPress/WordPress.git",
+          "reference": "6.8.11"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-6.8.11.zip",
+          "shasum": "13c024498084dd72d075b990bdcdc5c2da9e529b"
         },
         "extra": {
           "mysql_version": "5.5.5"
@@ -23386,6 +23690,42 @@
           "type": "zip",
           "url": "https://downloads.wordpress.org/release/wordpress-6.8.zip",
           "shasum": "a178c4a2f32a397c656286b2e4dcb924df98043a"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
+      "6.7.10": {
+        "name": "solidbunch/wordpress-core",
+        "version": "6.7.10",
+        "type": "wordpress-core",
+        "description": "WordPress core, the full release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.2.24"
+        },
+        "provide": {
+          "wordpress/core-implementation": "6.7.10"
+        },
+        "source": {
+          "type": "git",
+          "url": "https://github.com/WordPress/WordPress.git",
+          "reference": "6.7.10"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-6.7.10.zip",
+          "shasum": "df0388d15f1715ddfbce29d30e9f2fe404d5976f"
         },
         "extra": {
           "mysql_version": "5.5.5"
