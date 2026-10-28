@@ -23075,6 +23075,42 @@
       }
     },
     "solidbunch/wordpress-core": {
+      "7.2-beta2": {
+        "name": "solidbunch/wordpress-core",
+        "version": "7.2-beta2",
+        "type": "wordpress-core",
+        "description": "WordPress core, the full release archive as published on wordpress.org",
+        "keywords": [
+          "wordpress",
+          "core",
+          "cms"
+        ],
+        "homepage": "https://wordpress.org",
+        "license": "GPL-2.0-or-later",
+        "support": {
+          "issues": "https://github.com/solidbunch/wordpress-core/issues",
+          "source": "https://github.com/solidbunch/wordpress-core"
+        },
+        "require": {
+          "php": ">=7.4"
+        },
+        "provide": {
+          "wordpress/core-implementation": "7.2-beta2"
+        },
+        "source": {
+          "type": "git",
+          "url": "https://github.com/WordPress/WordPress.git",
+          "reference": "7.2-beta2"
+        },
+        "dist": {
+          "type": "zip",
+          "url": "https://downloads.wordpress.org/release/wordpress-7.2-beta2.zip",
+          "shasum": "2309e3b55e21e7179a785bfae6c5e42d7a2617ff"
+        },
+        "extra": {
+          "mysql_version": "5.5.5"
+        }
+      },
       "7.2-beta1": {
         "name": "solidbunch/wordpress-core",
         "version": "7.2-beta1",
