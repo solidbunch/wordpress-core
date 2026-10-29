@@ -16,6 +16,11 @@ permissions:
   actions: write # dispatch update-packages.yml to self-heal a missed release
   issues: write  # one open issue per incident dedupes the alerts
 
+# A manual run overlapping the hourly one would otherwise both see "no open issue" and open two.
+concurrency:
+  group: release-watchdog
+  cancel-in-progress: false
+
 jobs:
   watchdog:
     name: Verify releases are picked up
@@ -29,8 +34,11 @@ jobs:
         with:
           node-version: "22"
 
+      # continue-on-error keeps a crashing script from turning every hourly run red on its own: the
+      # failure is reported through `outcome` and deduplicated by the alert step below.
       - name: Find releases missing from packages.json for more than two hours
         id: watchdog
+        continue-on-error: true
         run: node release-watchdog.js
 
       # Second, independent check of the Cloudflare cron, in case its own alerts do not arrive. Only
@@ -44,10 +52,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MAX_AGE_MINUTES: "120"
         run: |
-          latest=$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/update-packages.yml/runs?per_page=100" \
-            --jq '[.workflow_runs[]
-                   | select(.event == "workflow_dispatch" and .triggering_actor.login != "github-actions[bot]")
-                   | .created_at] | max // empty')
+          # An unreadable run list says nothing about the cron, so it neither alerts nor closes an incident.
+          if ! runs=$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/update-packages.yml/runs?per_page=100"); then
+            echo "unknown=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Could not read the update-packages run list"
+            exit 0
+          fi
+          latest=$(jq -r '[.workflow_runs[]
+                           | select(.event == "workflow_dispatch" and .triggering_actor.login != "github-actions[bot]")
+                           | .created_at] | max // empty' <<< "$runs")
           if [ -z "$latest" ]; then
             echo "stale=true" >> "$GITHUB_OUTPUT"
             echo "::error::No dispatched release check found in the last 100 runs"
@@ -78,6 +91,7 @@ jobs:
           TITLE: "Release watchdog: releases are not being picked up"
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           PROBLEM: ${{ steps.watchdog.outputs.overdue == 'true' || steps.cron.outputs.stale == 'true' || steps.watchdog.outcome == 'failure' }}
+          CRON_UNKNOWN: ${{ steps.cron.outputs.unknown == 'true' }}
           REMINDER_HOURS: "24"
         run: |
           issue=$(gh issue list --state open --limit 100 --json number,title,updatedAt \
@@ -85,7 +99,7 @@ jobs:
           number=$(jq -r '.number // empty' <<< "${issue:-null}")
 
           if [ "$PROBLEM" != "true" ]; then
-            if [ -n "$number" ]; then
+            if [ -n "$number" ] && [ "$CRON_UNKNOWN" != "true" ]; then
               gh issue comment "$number" --body "Resolved: the latest watchdog run found no problem. Run: $RUN_URL"
               gh issue close "$number"
             fi

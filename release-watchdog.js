@@ -9,7 +9,7 @@ const GRACE_MINUTES = Number(process.env.GRACE_MINUTES || 120);
 
 // Age in minutes of the published archive, or null when it does not exist (yet)
 async function archiveAgeMinutes(version, suffix) {
-  const res = await fetch(`${probeBase()}wordpress-${version}${suffix}.zip`, { method: 'HEAD' });
+  const res = await fetch(`${probeBase()}wordpress-${version}${suffix}.zip`, { method: 'HEAD', signal: AbortSignal.timeout(15000) });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${version}${suffix}`);
   const modified = Date.parse(res.headers.get('last-modified'));
