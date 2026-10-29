@@ -6,6 +6,14 @@ workers_dev = false
 [triggers]
 crons = ["*/15 * * * *"]
 
+# Kept in the file on purpose: a deploy without it turns Issues off even if they were enabled in
+# the dashboard. Issues needs Wrangler 4.134.0 or later.
+[observability]
+enabled = true
+
+[observability.issues]
+enabled = true
+
 [vars]
 GITHUB_REPOSITORY = "solidbunch/wordpress-core"
 GITHUB_REF = "main"
