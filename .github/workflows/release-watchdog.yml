@@ -1,0 +1,107 @@
+name: Release watchdog
+
+# Independent safety net for "WordPress release watch", checking the outcome rather than the
+# machinery: a version that wordpress.org has offered for more than two hours must be in
+# packages.json. Whatever broke (Cloudflare cron, token, dispatch, update job), this fails, which
+# triggers GitHub's failed-workflow e-mail. It also checks that the Cloudflare cron keeps
+# dispatching, as a second line behind the monitors configured in Cloudflare itself.
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write # dispatch update-packages.yml to self-heal a missed release
+  issues: write  # one open issue per incident dedupes the alerts
+
+jobs:
+  watchdog:
+    name: Verify releases are picked up
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      - name: Find releases missing from packages.json for more than two hours
+        id: watchdog
+        run: node release-watchdog.js
+
+      # Second, independent check of the Cloudflare cron, in case its own alerts do not arrive. Only
+      # runs dispatched by someone other than this workflow's token count, so neither the daily
+      # schedule nor the self-heal dispatch below can mask a dead cron. The run list is read without
+      # an `event` filter, which is served by the Actions search index and can lag.
+      - name: Check the Cloudflare cron is still dispatching
+        id: cron
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAX_AGE_MINUTES: "120"
+        run: |
+          latest=$(gh api "/repos/$GITHUB_REPOSITORY/actions/workflows/update-packages.yml/runs?per_page=100" \
+            --jq '[.workflow_runs[]
+                   | select(.event == "workflow_dispatch" and .triggering_actor.login != "github-actions[bot]")
+                   | .created_at] | max // empty')
+          if [ -z "$latest" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "::error::No dispatched release check found in the last 100 runs"
+            exit 0
+          fi
+          age=$(( ($(date -u +%s) - $(date -u -d "$latest" +%s)) / 60 ))
+          echo "Last dispatched release check started $age min ago ($latest)"
+          if [ "$age" -gt "$MAX_AGE_MINUTES" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+            echo "::error::Last dispatched release check started $age min ago (limit $MAX_AGE_MINUTES). The Cloudflare cron has probably stopped."
+          fi
+
+      - name: Trigger a full run for the missed release
+        if: ${{ steps.watchdog.outputs.overdue == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run update-packages.yml --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f mode=full
+
+      # One alert per incident, not one per hour: an open issue is the state. The first problem run
+      # opens it and fails (GitHub e-mails the failed run); while it stays open later runs stay
+      # green and quiet, with a failing reminder once a day; when the problem is gone the issue is
+      # closed. The open-issue list is read without `--search`, which is served by the search index
+      # and can lag.
+      - name: Alert once per incident
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "Release watchdog: releases are not being picked up"
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PROBLEM: ${{ steps.watchdog.outputs.overdue == 'true' || steps.cron.outputs.stale == 'true' || steps.watchdog.outcome == 'failure' }}
+          REMINDER_HOURS: "24"
+        run: |
+          issue=$(gh issue list --state open --limit 100 --json number,title,updatedAt \
+            --jq "[.[] | select(.title == \"$TITLE\")][0] // empty")
+          number=$(jq -r '.number // empty' <<< "${issue:-null}")
+
+          if [ "$PROBLEM" != "true" ]; then
+            if [ -n "$number" ]; then
+              gh issue comment "$number" --body "Resolved: the latest watchdog run found no problem. Run: $RUN_URL"
+              gh issue close "$number"
+            fi
+            exit 0
+          fi
+
+          if [ -z "$number" ]; then
+            gh issue create --title "$TITLE" \
+              --body "A release is missing from packages.json for more than two hours, or the Cloudflare cron has stopped dispatching. Details: $RUN_URL"
+            exit 1
+          fi
+
+          updated=$(jq -r '.updatedAt' <<< "$issue")
+          age=$(( ($(date -u +%s) - $(date -u -d "$updated" +%s)) / 3600 ))
+          if [ "$age" -ge "$REMINDER_HOURS" ]; then
+            gh issue comment "$number" --body "Still failing after $age h. Run: $RUN_URL"
+            exit 1
+          fi
+          echo "::warning::Problem persists; alert already sent (issue #$number)"
