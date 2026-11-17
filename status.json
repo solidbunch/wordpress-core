@@ -7,22 +7,22 @@
       "count": 746
     },
     "solidbunch/wordpress-core": {
-      "latest": "7.2-beta5",
+      "latest": "7.2-RC1",
       "latestStable": "7.1.4",
-      "count": 751
+      "count": 752
     }
   },
   "wordpress": {
     "latestStable": "7.1.4",
-    "latestPrerelease": "7.2-beta5"
+    "latestPrerelease": "7.2-RC1"
   },
   "pickup": {
-    "version": "7.2-beta5",
-    "publishedAt": "2026-11-10T16:23:29Z",
-    "observedAt": "2026-11-10T16:31:08Z",
-    "lagSeconds": 459,
+    "version": "7.2-RC1",
+    "publishedAt": "2026-11-17T15:41:50Z",
+    "observedAt": "2026-11-17T15:46:04Z",
+    "lagSeconds": 254,
     "batchSize": 1,
-    "previousCheckAt": "2026-11-10T16:15:44Z",
-    "reactionSeconds": 924
+    "previousCheckAt": "2026-11-17T15:30:44Z",
+    "reactionSeconds": 920
   }
 }
